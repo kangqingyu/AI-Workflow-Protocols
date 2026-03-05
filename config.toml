@@ -1,0 +1,42 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "xhigh"
+personality = "pragmatic"
+[projects."/Users/kqy/Documents/kqyCode/Workspace"]
+trust_level = "trusted"
+
+
+model = "gpt-5.2"
+model_reasoning_effort = "high"
+model_provider = "openrouter"
+
+[features]
+skills =true
+
+[projects."/Users/kqy"]
+trust_level = "trusted"
+
+[projects."/Users/kqy/Documents/kqyCode/KQYAIRule"]
+trust_level = "trusted"
+
+[projects."/Users/kqy/Documents/kqyCode/Workspace/Apps/ReadingGraphApp"]
+trust_level = "trusted"
+
+[projects."/Users/kqy/Documents/kqyCode/Workspace/Apps/RubikBlindfoldAPP/RubikBlindfoldDomain"]
+trust_level = "trusted"
+
+[projects."/Users/kqy/Documents/kqyCode/Workspace/Apps/ReadingGraphApp/ReadingGraphDomain"]
+trust_level = "trusted"
+
+[model_providers.openrouter]
+name = "Open Router"
+base_url = "https://anti.de5.net/"
+env_key = "sk-7NRbfN7I9P2DUd0r03wp0doaMZotpOaEv84V0WuMGBB9iyet"
+wire_api = "responses"
+query_params = {}
+
+
+[model_providers.azure]
+name = "Azure"
+base_url = "https://ai.anti.top/v1"
+env_key = "sk-oLtmrhBYPV0UVo3c7Cr6vJDrNgLwkLzwcmdlbUAdefalisbf"  # Or "OPENAI_API_KEY", whichever you use.
+query_params = { api-version = "2025-04-01-preview" }
