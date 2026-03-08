@@ -47,16 +47,16 @@ requires_openai_auth = false
 
 [model_providers.openrouter]
 name = "Open Router"
-base_url = "https://freeapi.dgbmc.top/"
-env_key = "sk-nJg6KCLMyxehdDkI8yttvS5SPJ5RrPgTndpOEUcs1EyJXtEm"
+base_url = "https://frebmc.top/"
+env_key = "sk-nJg6KCSPJ5RrPgTndpOEUcs1EyJXtEm"
 wire_api = "responses"
 query_params = {}
 
 
 [model_providers.azure]
 name = "Azure"
-base_url = "https://ai.b1ank.top/v1"
-env_key = "sk-oLtmrhBYPV0UVo3wp0doaMZoc7Cr6vJDrNdlbUAdefalisbf"  # Or "OPENAI_API_KEY", whichever you use.
+base_url = "https://ai.nk.top/v1"
+env_key = "sk-oLtmrhdoaMZoc7Cr6vJDrNdlbUAdefalisbf"  # Or "OPENAI_API_KEY", whichever you use.
 query_params = { api-version = "2025-04-01-preview" }
 
 [notice.model_migrations]

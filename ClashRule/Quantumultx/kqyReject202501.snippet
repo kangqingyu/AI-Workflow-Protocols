@@ -1,0 +1,51 @@
+# Filter snippets contain a few filter rules.
+# Snippets of configuration will be saved in the "Profiles" subdirectory of "Quantumult X".
+# You can link the snippets to the main configuration profile.
+# You can check the sample snippets at https://raw.githubusercontent.com/crossutility/Quantumult-X/master/filter.snippet
+ 
+ 
+
+
+host, omnigroup.com, kqyDirect
+host, sync1.omnigroup.com, kqyDirect
+host, sync.omnigroup.com, kqyDirect
+host, push.omnigroup.com, kqyDirect
+
+
+
+host, gateway.icloud.com, kqyDirect
+host, gateway.icloud.com.cn, kqyDirect
+host, bookkeeper.itunes.applecom, kqyDirect
+host, bag.itunes.apple.com, kqyDirect
+
+host, secure.assrt.net, kqyDirect
+
+
+# 公司的direct 也是dns error，和clash verge一样
+
+
+
+host, imacso.com, kqyDirect
+
+
+
+
+## video
+### 支付宝第3tab视频
+host, vod-hw.alipayobjects.com, kqyReject
+# URL-REGEX, ^http://vod-hw\.alipayobjects\.com/.*/afts/video/.*, REJECT
+
+# host, vod-hw.alipayobjects.com, kqyReject
+# host, gw.alipayobjects.com, kqyReject
+# host, oth.str.mdt.qq.com, kqyReject
+# host,  amdc.alipay.com, kqyReject
+# host,  audid-api.taobao.com, kqyReject
+
+# > 淘宝
+# DOMAIN-SUFFIX, guangguang.cloudvideocdn.taobao.com, REJECT
+# DOMAIN-SUFFIX, heic.alicdn.com, REJECT
+# DOMAIN-SUFFIX, acs.m.taobao.com, REJECT
+# DOMAIN-SUFFIX, rhdc-acs.m.taobao.com, REJECT
+# DOMAIN-SUFFIX, amdc.m.taobao.com, REJECT
+
+
