@@ -40,7 +40,7 @@ name = "cpa"
 # provider = "openai"
 base_url = "http://localhost:8317/v1"
 #base_url = "http://127.0.0.1:8317/v1"
-#env_key = "sk-001"
+#env_key = ""
 wire_api = "responses"
 # requires_openai_auth = true
 requires_openai_auth = false
@@ -48,7 +48,7 @@ requires_openai_auth = false
 [model_providers.openrouter]
 name = "Open Router"
 base_url = "https://frebmc.top/"
-env_key = "sk-nJg6KCSPJ5RrPgTndpOEUcs1EyJXtEm"
+env_key = ""
 wire_api = "responses"
 query_params = {}
 
@@ -56,7 +56,7 @@ query_params = {}
 [model_providers.azure]
 name = "Azure"
 base_url = "https://ai.nk.top/v1"
-env_key = "sk-oLtmrhdoaMZoc7Cr6vJDrNdlbUAdefalisbf"  # Or "OPENAI_API_KEY", whichever you use.
+env_key = "s"  # Or "OPENAI_API_KEY", whichever you use.
 query_params = { api-version = "2025-04-01-preview" }
 
 [notice.model_migrations]
