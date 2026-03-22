@@ -1,11 +1,19 @@
- 
- 
+# NAME: GitHub
+# AUTHOR: kqy
+# REPO: https://github.com/kangqingyu
+# UPDATED: 2023-06-12 12:06:19
 
+# DOMAIN-KEYWORD: 1
 
-secure.assrt.net, kqyDirect
-file0.assrt.net, kqyDirect
-imacso.com, kqyDirect
-host, push.omnigroup.com, kqyDirect
+# DOMAIN-SUFFIX: 30
 
+# TOTAL: 31
 
- 
+payload:
+  - DOMAIN-SUFFIX,imacso.com
+  - DOMAIN-SUFFIX,example.com
+  - DOMAIN-KEYWORD,baidu
+
+  - RULE-SET,myrules,PROXY
+  - MATCH,DIRECT
+  - secure.assrt.net, DIRECT
