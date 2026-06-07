@@ -17,3 +17,37 @@ payload:
   - RULE-SET,myrules,PROXY
   - MATCH,DIRECT
   - secure.assrt.net, DIRECT
+
+
+
+
+# Clash Verge
+
+  "DOMAIN-SUFFIX, coderunnerapp.com, 广告过滤",
+
+    // "DOMAIN-SUFFIX, sync.omnigroup.com, 国内网站",
+  "DOMAIN-SUFFIX, omnigroup.com, 国内网站",        
+  "DOMAIN-SUFFIX, notability.com, 国内网站",
+  
+  // movie
+  "DOMAIN-SUFFIX, m-team.cc, 国内网站",
+  "DOMAIN-SUFFIX, m-team.io, 国内网站",
+  "DOMAIN-SUFFIX, m-team.co, 国内网站",
+  
+  "DOMAIN-SUFFIX, springsunday.net, 国内网站",
+  "DOMAIN-SUFFIX, totheglory.im, 国内网站", 
+
+  // relax web
+  "DOMAIN-SUFFIX, imacso.com, 广告过滤",
+  "DOMAIN-SUFFIX, sspai.com, 广告过滤",
+  "DOMAIN-SUFFIX, bilibili.com, 广告过滤",
+  
+  "DOMAIN-SUFFIX, mcdn.bilivideo.cn, 广告过滤",
+  "DOMAIN, data.bilibili.com, 广告过滤",
+  "DOMAIN, api.bilibili.com, 广告过滤",
+
+  "DOMAIN-SUFFIX, chiphell.com, 广告过滤",
+
+  
+  "DOMAIN-SUFFIX, coderunnerapp.com, 广告过滤",
+
