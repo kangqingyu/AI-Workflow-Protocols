@@ -1,8 +1,7 @@
 ---
-name: article-to-cover-pictures
+name: upgod-article-to-cover-pictures
+
 description: 根据文章，输出自媒体封面
-
-
 
 
 

@@ -13,13 +13,6 @@ allowed-tools: Read, Grep, Glob, Bash(git -C * status *), Bash(git -C * diff *),
 Use this skill to run git operations safely and consistently.
 
 
- 
-step1 具体项目名字，项目路径，请根据如下文件查看：
-/Users/kqy/Documents/kqyCode/Workspace/.claude/skills/repo-dir-list/SKILL.md
-
-step2 确定项目名称之后，使用如下git命令提交代码
-
-
 ## Scope
 
 Handle common git tasks:
