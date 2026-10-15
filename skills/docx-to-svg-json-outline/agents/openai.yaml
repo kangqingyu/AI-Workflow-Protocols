@@ -1,0 +1,4 @@
+interface:
+  display_name: "DOCX 转 SVG JSON 提纲"
+  short_description: "按 Word 标题与图片生成带比例占位的 SVG JSON 提纲"
+  default_prompt: "使用 $docx-to-svg-json-outline 将章节 DOCX 的标题和图片生成 SVG JSON 提纲及图片资产。"

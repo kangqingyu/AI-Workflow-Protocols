@@ -37,6 +37,9 @@ payload:
   "DOMAIN-SUFFIX, springsunday.net, 国内网站",
   "DOMAIN-SUFFIX, totheglory.im, 国内网站", 
 
+  // 剪映自动生成字母
+  "DOMAIN-SUFFIX, pc-mon.zijieapi.com, 国内网站",
+
   // relax web
   "DOMAIN-SUFFIX, imacso.com, 广告过滤",
   "DOMAIN-SUFFIX, sspai.com, 广告过滤",
