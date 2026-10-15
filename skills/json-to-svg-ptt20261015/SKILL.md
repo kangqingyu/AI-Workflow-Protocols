@@ -34,11 +34,10 @@ description: 根据json大纲，输出svg格式PPT演示文稿
 ## SVG中文字要求
 根据json结构，保持和json中一样的文字，避免添加过多解释性文字。
 
-图片和备注可以参考json文件同文件夹层级下的： outline-info.json。
-## 输出格式
-1 页数要求：每一个JSON文件，单独输出一页svg代码文件。
+## 图片处理与防引用失败规范（强制执行）
+当 JSON 内容中出现图片提示（如 `图片（使用附件中图片：xxx）`）或 `outline-info.json` 中该页存在 `asset_refs` 时，**必须使用原文真实图片，严禁手绘替代或仅留空白/文字占位，且严禁在最终 SVG 中保留外部相对/绝对文件路径**：
 
- 1. **精准定位与存在性校验**：
+1. **精准定位与存在性校验**：
    - 查阅同目录下的 `outline-info.json`，通过当前页的 `asset_refs` 匹配顶层 `assets` 列表，获取图片的 `path` 与 `original_reference`。
    - **必须校验文件实际存在**：在终端或通过工具确认图片文件真实路径（注意排查文件名空格差异，如 `pictures/` 或 `picture/`、`assets/` 目录）。
 2. **强制使用 Base64 Data URI 内嵌（杜绝路径失效与预览拦截）**：
