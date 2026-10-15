@@ -32,7 +32,7 @@ python3 scripts/svg_safari_to_pptx.py \
 - `--svg` 可重复。文件按给定顺序；文件夹只取当前这一层的 `.svg` / `.SVG`，不进入子文件夹。
 - 同一文件夹内按文件名自然排序：`page-2` 在 `page-10` 前，`page-001` 在 `page-002` 前。
 - 默认覆盖 `--pptx` 指向的文件。用户要另存时加 `--output`。
-- 截图同时保存到 PPT 同目录的 `safari-captures/`。
+- 截图先保存到 PPT 同目录的 `safari-captures/`。写入 PPT 之前，把每张图压成约 1MB 的 JPEG（尽量用不超过约 1.15MB 的最高质量），再插入。`safari-captures/` 里留下的是压缩后的 JPEG，不再保留几 MB 的 PNG。
 
 运行时会弹出一个自动化 Safari 窗口，结束后脚本会关掉它。不要对用户正在用的 Safari 执行「退出」。
 

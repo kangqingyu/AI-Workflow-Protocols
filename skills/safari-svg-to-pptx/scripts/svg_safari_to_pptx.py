@@ -463,6 +463,71 @@ def crop_to_aspect(path, aspect):
     subprocess.check_call(["sips", "-c", str(new_h), str(new_w), str(path)], stdout=subprocess.DEVNULL)
 
 
+# 截图 PNG 大约 5MB。写入 PPT 前压到 1MB 左右，并尽量用更高的 JPEG 质量。
+TARGET_IMAGE_BYTES = 1024 * 1024
+IMAGE_BYTES_CEILING = int(TARGET_IMAGE_BYTES * 1.15)
+
+
+def write_jpeg(src, dest, quality):
+    subprocess.check_call(
+        [
+            "sips",
+            "-s",
+            "format",
+            "jpeg",
+            "-s",
+            "formatOptions",
+            str(int(quality)),
+            str(src),
+            "--out",
+            str(dest),
+        ],
+        stdout=subprocess.DEVNULL,
+    )
+
+
+def compress_near_one_megabyte(src):
+    """Crop 之后调用。生成同名 .jpeg，删掉更大的原图，返回压缩后的路径。"""
+    src = Path(src)
+    dest = src.with_suffix(".jpeg")
+    before = src.stat().st_size
+    if src.suffix.lower() in (".jpg", ".jpeg") and before <= IMAGE_BYTES_CEILING:
+        if src != dest:
+            src.replace(dest)
+        return dest
+
+    best_quality = None
+    low, high = 70, 95
+    while low <= high:
+        quality = (low + high) // 2
+        write_jpeg(src, dest, quality)
+        size = dest.stat().st_size
+        if size <= IMAGE_BYTES_CEILING:
+            best_quality = quality
+            low = quality + 1
+        else:
+            high = quality - 1
+    if best_quality is None:
+        width, height = png_size(src)
+        subprocess.check_call(
+            ["sips", "-z", str(int(height * 0.85)), str(int(width * 0.85)), str(src)],
+            stdout=subprocess.DEVNULL,
+        )
+        write_jpeg(src, dest, 80)
+        best_quality = 80
+    else:
+        write_jpeg(src, dest, best_quality)
+    if src.resolve() != dest.resolve():
+        src.unlink()
+    after = dest.stat().st_size
+    print(
+        "压缩 %s  %.2fMB -> %.2fMB (q%s)"
+        % (dest.name, before / 1048576.0, after / 1048576.0, best_quality),
+        flush=True,
+    )
+    return dest
+
+
 def read_text(path):
     return Path(path).read_text(encoding="utf-8")
 
@@ -649,6 +714,19 @@ def ensure_png_default(work):
         write_text(path, text)
 
 
+def ensure_jpeg_default(work):
+    path = work / "[Content_Types].xml"
+    text = read_text(path)
+    if 'Extension="jpeg"' in text:
+        return
+    insert = '<Default Extension="jpeg" ContentType="image/jpeg"/>'
+    if "<Default " in text:
+        text = text.replace("<Default ", insert + "<Default ", 1)
+    else:
+        text = text.replace("</Types>", insert + "</Types>")
+    write_text(path, text)
+
+
 def add_slide_part(work, template_xml, template_rels):
     number = next_slide_number(work)
     part = "ppt/slides/slide%s.xml" % number
@@ -725,7 +803,12 @@ def fill_slide(work, part, png_path):
     used = {item[0] for item in parse_rels(rels)}
     if image_rel in used and image_rel == "rId1":
         image_rel = "rId3"
-    media_name = "safari-%s.png" % Path(part).stem
+    suffix = Path(png_path).suffix.lower()
+    if suffix == ".jpg":
+        suffix = ".jpeg"
+    if suffix not in (".jpeg", ".png"):
+        suffix = ".jpeg"
+    media_name = "safari-%s%s" % (Path(part).stem, suffix)
     media_dir = work / "ppt" / "media"
     media_dir.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(png_path, media_dir / media_name)
@@ -852,8 +935,11 @@ def apply_screenshots(pptx_path, png_paths, output_path):
         template_xml = (work / template_part).read_bytes()
         template_rels = (work / "ppt" / "slides" / "_rels" / (Path(template_part).name + ".rels")).read_bytes()
         aspect = slide_cx / float(slide_cy)
+        compressed = []
         for png in png_paths:
             crop_to_aspect(png, aspect)
+            compressed.append(compress_near_one_megabyte(png))
+        png_paths = compressed
 
         targets = [item["part"] for item in full]
         if all_full:
@@ -867,13 +953,18 @@ def apply_screenshots(pptx_path, png_paths, output_path):
             targets = targets[: len(png_paths)]
 
         ensure_png_default(work)
+        ensure_jpeg_default(work)
         for part, png in zip(targets, png_paths):
             fill_slide(work, part, png)
         cleanup_media(work)
         final_count = len(ordered_slides(work))
         update_app_xml(work, final_count)
         pack_pptx(work, output_path)
-        return {"slides": final_count, "filled": [Path(part).name for part in targets]}
+        return {
+            "slides": final_count,
+            "filled": [Path(part).name for part in targets],
+            "images": png_paths,
+        }
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -936,7 +1027,7 @@ def main(argv):
         result = apply_screenshots(pptx_path, shots, output)
         print("已写入 %s" % output)
         print("共 %s 页，本次放入 %s 张全屏图片。" % (result["slides"], len(result["filled"])))
-        for svg, shot, part in zip(svgs, shots, result["filled"]):
+        for svg, shot, part in zip(svgs, result["images"], result["filled"]):
             print("  %s -> %s -> %s" % (svg.name, shot.name, part))
         return 0
     except SkillError as error:
