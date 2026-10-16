@@ -244,18 +244,35 @@ class SafariShots(object):
                     pass
             time.sleep(0.2)
 
+    def launch_driver(self):
+        last_error = None
+        for _ in range(3):
+            if self.driver and self.driver.poll() is None:
+                self.driver.kill()
+                self.driver.wait(timeout=3)
+            driver_port = free_port()
+            self.base = "http://127.0.0.1:%s" % driver_port
+            self.driver = subprocess.Popen(
+                ["safaridriver", "-p", str(driver_port)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            try:
+                wait_port(driver_port, timeout=20)
+                return
+            except SkillError as error:
+                detail = ""
+                if self.driver.poll() is not None and self.driver.stderr:
+                    detail = self.driver.stderr.read().decode("utf-8", "replace")[-400:]
+                last_error = SkillError("%s %s" % (error, detail.strip()))
+                time.sleep(0.8)
+        raise last_error
+
     def reopen_browser(self):
         print("Safari 窗口断开，重新打开。", flush=True)
         self.drop_browser()
-        driver_port = free_port()
-        self.base = "http://127.0.0.1:%s" % driver_port
-        self.driver = subprocess.Popen(
-            ["safaridriver", "-p", str(driver_port)],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-        wait_port(driver_port)
+        self.launch_driver()
         created = self.call(
             "POST",
             "/session",
