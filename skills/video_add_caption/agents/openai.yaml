@@ -1,0 +1,4 @@
+interface:
+  display_name: "剪映自动字幕与导出"
+  short_description: "通过剪映专业版生成自动字幕，统一黄底黑字样式，并按指定路径导出视频"
+  default_prompt: "使用 $jianying-auto-subtitles 处理指定视频：在剪映专业版生成自动字幕，应用黄底黑字样式，并将字幕版 MP4 导出到原文件夹。"
