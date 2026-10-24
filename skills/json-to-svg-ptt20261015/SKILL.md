@@ -30,3 +30,5 @@ description: 根据 JSON 大纲生成 SVG 格式的 PPT 演示文稿。
 | 编号 | 名称 / 别名 | 规范文件 |
 |---|---|---|
 | 1 / 风格一 | Apple 暗黑毛玻璃风 / Dark Glassmorphism（默认） | [apple-dark-glass.md](styles/apple-dark-glass.md) |
+| 2 / 风格二 | 圆角立体几何撞色 / Soft 3D Clay & Geometric Color-Blocking | [rounded-3d-colorblock.md](styles/rounded-3d-colorblock.md) |
+| 3 / 风格三 | Teenage Engineering 精密工业机能风 / Industrial Retro-Tech | [te-industrial-retro.md](styles/te-industrial-retro.md) |
