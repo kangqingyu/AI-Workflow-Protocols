@@ -5,7 +5,28 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 
 # 剪映自动字幕与导出
 
-使用剪映专业版完成本地视频字幕制作，保留可编辑草稿。通过 Computer Use 的 `cua_repl` 操作应用；不通过脚本修改剪映草稿或用其他视频工具替代剪映。
+使用剪映专业版完成本地视频字幕制作，保留可编辑草稿。根据当前运行环境选择对应的 Computer Use 操作方式；不通过脚本直接修改剪映草稿文件或用其他视频工具替代剪映。
+
+## 运行环境分流（ChatGPT vs Antigravity）
+
+### A. ChatGPT / Codex 环境（具备内置 `cua_repl` 工具）
+- **保持原方式不变**：直接使用内置 `cua_repl` 工具操作应用（调用 `cua.listApps()`、`getAXState()`、`setValue` / `paste`、截图及坐标点击）。
+
+### B. Antigravity 环境（无内置 `cua_repl` 工具）
+- **使用本地 macOS Computer Use 脚本**：通过 `run_command`（设置 `BypassSandbox: true` 以访问 macOS 桌面 GUI 与无障碍服务）调用本技能内置的 [scripts/mac_cua.py](scripts/mac_cua.py)，并配合 `view_file` 查看截图，实现与 `cua_repl` 1:1 等价的界面操作：
+  - **列出/激活应用**（对应 `cua.listApps()` 与连接应用）：
+    - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py list-apps`
+    - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py activate`
+  - **读取无障碍树**（对应 `getAXState()`）：
+    - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py ax-state --depth 10`（可加 `--filter 关键词`；输出包含每个元素的逻辑坐标 `rect=(x,y,w,h)` 与中心点 `center=(cx,cy)`）
+  - **1:1 逻辑坐标截图**（配合 `view_file` 视觉确认）：
+    - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py screenshot <截图保存路径.png>`（自动将 Retina 截图缩放到与屏幕逻辑点 `1:1` 对齐，图片像素 `(x, y)` 直接等于点击坐标 `(x, y)`；支持 `--rect x,y,w,h` 局部截图）
+  - **鼠标、滚轮与键盘输入**：
+    - 点击：`click <x> <y>`、`double-click <x> <y>`、`right-click <x> <y>`
+    - 拖放：`drag <x1> <y1> <x2> <y2>`
+    - 滚动：`scroll <x> <y> <dy>`（`dy` 为负数时向下滚动）
+    - 快捷键：`key cmd+shift+g`、`key return`、`key space`、`key escape`
+    - 中文路径粘贴（对应 `setValue` / `paste`）：`paste "<路径或文本>"`（底层通过 `pbcopy` + `cmd+v` 输入，避免中文漏字）
 
 ## 输入与默认值
 
@@ -17,10 +38,10 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 
 ## 1. 连接剪映
 
-遵循当前 Computer Use 工具返回的初始化说明，再执行 UI 操作。
+遵循当前 Computer Use 工具返回的初始化说明（ChatGPT 使用 `cua_repl`；Antigravity 使用 `mac_cua.py`），再执行 UI 操作。
 
 1. 尝试通过应用显示名称获取剪映专业版。
-2. 名称解析失败时，通过 `cua.listApps()` 获取真实应用标识。
+2. 名称解析失败时，通过 `cua.listApps()`（Antigravity 下使用 `mac_cua.py list-apps` / `activate`）获取真实应用标识。
 3. 如果 bundle ID 对应多个辅助进程，改用已返回的主应用完整路径；本次环境验证过的路径是 `/Applications/VideoFusion-macOS.app`，bundle ID 是 `com.lemon.lvpro`。其他机器以实际发现结果为准。
 4. 查看当前窗口，建立独立草稿；不要无意修改用户正在编辑的其他项目。
 
@@ -28,7 +49,7 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 
 1. 在首页选择「开始创作」，在素材页选择「导入」。
 2. 在系统文件选择器使用 `super+shift+g` 打开「前往文件夹」。
-3. 输入源视频绝对路径。中文路径优先使用 `setValue` 或 `paste`；本次操作中 `typeText` 曾漏掉中文。提交前核对字段内容。
+3. 输入源视频绝对路径。中文路径优先使用 `setValue` 或 `paste`（Antigravity 下使用 `mac_cua.py paste "<绝对路径>"`）；本次操作中 `typeText` 曾漏掉中文。提交前核对字段内容。
 4. 在文件选择器确认选中的文件名与路径，再点击「导入」。
 5. 将视频素材拖入主视频轨道，并验证轨道出现素材、总时长正确。素材库中出现缩略图不等于已加入时间线。
 6. 拖放未生效时，可使用素材右键菜单「根据选中素材新建时间线」。这条备用路径在本次环境有效；切换后确认活动时间线确实包含视频。
@@ -62,7 +83,7 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 3. 展开后寻找 **整个方块是亮黄色实心底，中央是黑色 T** 的图标。本次剪映版本验证的位置是 **第三行第一个（最左侧）**。先检查这个位置，可省去逐个试点；版本或布局变化时仍以图标外观为准。
 4. 区分容易误选的图标：第一行中的「黄色 T + 深灰底」会生成黄色文字，不是目标；目标必须是「黄色底 + 黑色 T」。不要凭黄色元素或字母颜色单独判断。
 5. 若目标不在上述位置，先确认网格已展开且能看到第三行，再在当前可见网格中按外观查找；确需滚动时只在右侧面板继续滚动，并重新截图定位。不要通过切换字体、花字、气泡或字幕模板寻找这个预设。
-6. 根据最新截图点击目标一次，随后读取 `getAXState()`。本次版本预设图标通常不暴露有意义的 AX 名称，坐标点击更直接；坐标必须从当前截图取得，不保存或复用某次操作的绝对坐标。
+6. 根据最新截图点击目标一次，随后读取 `getAXState()`（Antigravity 下使用 `mac_cua.py ax-state` 或重新 `screenshot`）。本次版本预设图标通常不暴露有意义的 AX 名称，坐标点击更直接；坐标必须从当前截图取得，不保存或复用某次操作的绝对坐标。
 
 ### 4.3 确认应用成功
 
@@ -90,7 +111,7 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 
 ## 界面操作与验证要点
 
-- 每轮操作后读取最新 `getAXState()`，按当前树重新识别元素。
+- 每轮操作后读取最新 `getAXState()`（Antigravity 下使用 `mac_cua.py ax-state` 及 `screenshot`），按当前树重新识别元素。
 - 本次版本部分 AX 按钮点击后没有动作。若状态无变化，查看截图并按当前画面的坐标点击，不把无异常返回当成成功。
 - 截图、窗口大小或屏幕缩放变化后重新定位；不要复用历史截图的像素坐标。截图中可能出现较大空白区域，需结合操作后状态确认坐标映射。
 - 工具偶发超时、pipe closed 或提示用户改变窗口时，先刷新状态确认动作是否已经生效，再决定是否重试，避免重复导入、识别或导出。
