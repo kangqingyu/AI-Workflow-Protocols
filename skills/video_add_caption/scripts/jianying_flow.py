@@ -201,10 +201,22 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
         if target_video_track:
             print(f"[{time.time() - t_start:.1f}s] Step 1/5: Reusing current draft that already has {target_video_track['desc']}")
         elif has_video:
-            print(f"[{time.time() - t_start:.1f}s] Step 1/5: Existing draft has other video ({has_video['desc']}); creating new draft via 文件 -> 新建草稿")
-            cua.mouse_click(115, 14)
-            time.sleep(0.4)
-            cua.mouse_click(135, 42)
+            print(f"[{time.time() - t_start:.1f}s] Step 1/5: Existing project has other video ({has_video['desc']}); closing previous project window first")
+            closed_win = False
+            pid = cua.get_jianying_pid()
+            app_el = cua.ax.AXUIElementCreateApplication(pid)
+            wins = cua.ax_get_attr(app_el, "AXWindows")
+            for i in range(cua.cf.CFArrayGetCount(wins) if wins else 0):
+                w = cua.cf.CFArrayGetValueAtIndex(wins, i)
+                if cua.cf_to_py(cua.ax_get_attr(w, "AXSubrole")) == "AXStandardWindow":
+                    cb = cua.ax_get_attr(w, "AXCloseButton")
+                    if cb:
+                        cua.ax.AXUIElementPerformAction(cb, cua.cfstr("AXPress"))
+                        closed_win = True
+                        break
+            if not closed_win:
+                cua.mouse_click(20.0, 51.0)
+            time.sleep(1.2)
         else:
             print(f"[{time.time() - t_start:.1f}s] Step 1/5: Reusing already open empty editor draft")
 
@@ -213,6 +225,12 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
         for _ in range(30):
             time.sleep(0.5)
             nodes = get_app_nodes(cua, max_depth=6)
+            home_new = find_node(nodes, lambda n: n["desc"] in ("HomePageStartProjectDesp", "HomePageNewProject"))
+            if home_new:
+                print(f"[{time.time() - t_start:.1f}s] Clicking '开始创作' on Home Screen at {home_new['center']}")
+                cua.mouse_click(*home_new["center"])
+                time.sleep(1.0)
+                continue
             timeline_root = find_node(nodes, lambda n: n["desc"] == "MainTimeLineRoot")
             has_video = find_node(nodes, lambda n: n["desc"].startswith("MTLSVideoP:"))
             if timeline_root and not has_video:
@@ -453,17 +471,25 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
                 fname_input = find_node(nodes, lambda n: n["desc"] == "ExportFileNameInput")
                 ok_btn = find_node(nodes, lambda n: n["title"] == "ExportOkBtn" or n["desc"] == "ExportOkBtn")
 
-    print(f"[{time.time() - t_start:.1f}s] Setting export title to '{target_stem}' at {fname_input['center']}")
-    cua.mouse_click(*fname_input["center"], count=3, focus_first=False)
-    time.sleep(0.2)
-    cua.send_key("delete", focus_first=False)
-    time.sleep(0.15)
-    cua.type_unicode(target_stem, press_enter=False, focus_first=False)
-    time.sleep(0.4)
+    for attempt in range(3):
+        fx, fy = fname_input["center"]
+        print(f"[{time.time() - t_start:.1f}s] Setting export title to '{target_stem}' at {(fx, fy)} (attempt {attempt + 1})")
+        # Click center of ExportFileNameInput (rect=992..1168, center=(1080, 316), which sits right after default title '10月25日 (N)')
+        cua.mouse_click(fx, fy, focus_first=False)
+        time.sleep(0.2)
+        for _ in range(25):
+            cua.send_key("delete", focus_first=False)
+            time.sleep(0.01)
+        time.sleep(0.15)
+        cua.type_unicode(target_stem, press_enter=False, focus_first=False)
+        time.sleep(0.45)
 
-    nodes = get_app_nodes(cua, max_depth=6)
-    fname_after = find_node(nodes, lambda n: n["desc"] == "ExportFileNameInput")
-    print(f"[{time.time() - t_start:.1f}s] Verified export title input: {fname_after['val'] if fname_after else 'unknown'}")
+        nodes = get_app_nodes(cua, max_depth=6)
+        path_node = find_node(nodes, lambda n: n["desc"].endswith(".mp4") and "/" in n["desc"])
+        actual_path = path_node["desc"] if path_node else ""
+        print(f"[{time.time() - t_start:.1f}s] Verified export path node: '{actual_path}'")
+        if actual_path.endswith(f"/{target_stem}.mp4"):
+            break
 
     print(f"[{time.time() - t_start:.1f}s] Clicking ExportOkBtn at {ok_btn['center']} and waiting for 导出成功...")
     cua.mouse_click(*ok_btn["center"])
