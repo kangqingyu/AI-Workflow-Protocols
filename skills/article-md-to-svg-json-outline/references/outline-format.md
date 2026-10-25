@@ -14,7 +14,7 @@
 | `parts[].pages[]` | `title`、`content` |
 | 所有 `content` | 字符串数组；无展示内容时为 `[]` |
 
-`title`、`sub_title`、`part_title` 均为字符串。有效页面的 `title`、有效章节的 `part_title` 不得为空；无副标题时 `sub_title` 为 `""`。
+`title`、`sub_title`、`part_title` 均为字符串。有效页面的 `title`、有效章节的 `part_title` 不得为空；无副标题时 `sub_title` 为 `""`。`part_title` 仅作章节归属结构字段（供跨页归组与 `outline-info.json` 校验使用），下游视觉渲染时只展示 `pages[].title` 单行主标题，不与 `part_title` 重复叠加显示。
 
 不在上述白名单中的字段不得进入展示文件，包括 `schema_version`、`metadata`、`part`、`id`、`page_number`、`type`、`key_message`、`source`、`assets`、`notes`、`issues` 及 `kind`、`text`、`level`、`emphasis`、`children` 等节点属性。
 

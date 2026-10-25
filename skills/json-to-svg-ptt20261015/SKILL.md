@@ -10,6 +10,7 @@ description: 根据 JSON 大纲生成 SVG 格式的 PPT 演示文稿。
 - 画布固定为 `viewBox="0 0 1280 720"`。
 - 每个页面大纲 JSON 单独输出一页 `.svg` 文件；`outline-info.json` 是辅助元数据，不生成页面。
 - 保持 JSON 中的正文文字与内容结构，避免添加额外解释；图片提示指令应转化为图片，不作为正文显示。
+- **单行主标题原则（严禁重复渲染 `part_title`）**：正文页顶栏/左上角只渲染 `pages[0].title` 作为唯一主标题；`part_title` 仅作章节归组元数据（如跨页主题色映射），**严禁在主标题上方或旁边再输出一行 `part_title` 小字**（避免出现“第一行小字、第二行大字”的重复标题）。目录页同理，`table_of_contents.title`（如“目录”）全页只渲染一次。
 - 使用内容驱动的 Bento Grid：卡片数量与组合按信息结构决定，用卡片尺寸体现主次，卡片间距至少 `20px`。
 - 有图片要求时必须使用原文真实图片，并以 Base64 Data URI 内嵌；最终文件不得保留外部图片路径、未替换的占位符，也不得以手绘或文字占位替代原图。
 
@@ -32,3 +33,9 @@ description: 根据 JSON 大纲生成 SVG 格式的 PPT 演示文稿。
 | 1 / 风格一 | Apple 暗黑毛玻璃风 / Dark Glassmorphism（默认） | [apple-dark-glass.md](styles/apple-dark-glass.md) |
 | 2 / 风格二 | 圆角立体几何撞色 / Soft 3D Clay & Geometric Color-Blocking | [rounded-3d-colorblock.md](styles/rounded-3d-colorblock.md) |
 | 3 / 风格三 | Teenage Engineering 精密工业机能风 / Industrial Retro-Tech | [te-industrial-retro.md](styles/te-industrial-retro.md) |
+| 4 / 风格四 | 智性暖纸书卷风 / Warm Editorial Craft & Botanical Ink | [warm-editorial-craft.md](styles/warm-editorial-craft.md) |
+| 5 / 风格五 | 新粗野主义瑞士波普风 / Neo-Brutalist Swiss Kinetic Grid | [neo-brutalist-swiss.md](styles/neo-brutalist-swiss.md) |
+| 6 / 风格六 | VisionOS 极光珠光全息玻璃风 / VisionOS Iridescent Pearl & Holographic Prism | [visionos-aurora-pearl.md](styles/visionos-aurora-pearl.md) |
+| 7 / 风格七 | 牛津学院与复古科学图谱风 / Oxford Collegiate & Monocle Infographics | [oxford-collegiate-atlas.md](styles/oxford-collegiate-atlas.md) |
+| 8 / 风格八 | 神经多巴胺博弈与数字健康极简风 / Neuro-Balance & Digital Minimalism Lab | [neuro-dopamine-lab.md](styles/neuro-dopamine-lab.md) |
+| 9 / 风格九 | 蔦屋书店森系呼吸感与现代策展书卷风 / Tsutaya & Kinfolk Mindful Reading Sanctuary | [tsutaya-kinfolk-sanctuary.md](styles/tsutaya-kinfolk-sanctuary.md) |
