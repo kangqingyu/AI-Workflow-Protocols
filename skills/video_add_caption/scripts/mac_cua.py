@@ -354,20 +354,6 @@ def find_and_press_ax(elem, keyword: str, depth=0, max_depth=12, include_menubar
     return False
 
 
-def get_jianying_pid():
-    out = subprocess.run(
-        ['pgrep', '-f', '/Applications/VideoFusion-macOS.app/Contents/MacOS/VideoFusion-macOS'],
-        capture_output=True, text=True
-    )
-    pids = [int(x.strip()) for x in out.stdout.splitlines() if x.strip().isdigit()]
-    return pids[0] if pids else None
-
-
-def get_display_size():
-    did = cg.CGMainDisplayID()
-    return int(cg.CGDisplayPixelsWide(did)), int(cg.CGDisplayPixelsHigh(did))
-
-
 objc = ctypes.cdll.LoadLibrary('/usr/lib/libobjc.A.dylib')
 objc.objc_getClass.argtypes = [ctypes.c_char_p]
 objc.objc_getClass.restype = ctypes.c_void_p
@@ -376,6 +362,44 @@ objc.sel_registerName.restype = ctypes.c_void_p
 
 # Load AppKit so NSRunningApplication class is registered
 ctypes.cdll.LoadLibrary('/System/Library/Frameworks/AppKit.framework/AppKit')
+
+
+def get_pid_by_bundle_id(bundle_id: str, require_regular: bool = False):
+    try:
+        cls = objc.objc_getClass(b"NSRunningApplication")
+        sel = objc.sel_registerName(b"runningApplicationsWithBundleIdentifier:")
+        msg = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(
+            ("objc_msgSend", objc)
+        )
+        bid_cf = cfstr(bundle_id)
+        arr = msg(cls, sel, bid_cf)
+        cf.CFRelease(bid_cf)
+        if arr:
+            cnt = cf.CFArrayGetCount(arr)
+            msg_int = ctypes.CFUNCTYPE(ctypes.c_int32, ctypes.c_void_p, ctypes.c_void_p)(
+                ("objc_msgSend", objc)
+            )
+            sel_pid = objc.sel_registerName(b"processIdentifier")
+            sel_pol = objc.sel_registerName(b"activationPolicy")
+            for i in range(cnt):
+                app = cf.CFArrayGetValueAtIndex(arr, i)
+                if require_regular and int(msg_int(app, sel_pol)) != 0:
+                    continue
+                pid = int(msg_int(app, sel_pid))
+                if pid > 0:
+                    return pid
+    except Exception:
+        pass
+    return None
+
+
+def get_jianying_pid():
+    return get_pid_by_bundle_id(JIANYING_BUNDLE_ID, require_regular=True)
+
+
+def get_display_size():
+    did = cg.CGMainDisplayID()
+    return int(cg.CGDisplayPixelsWide(did)), int(cg.CGDisplayPixelsHigh(did))
 
 
 def activate_pid_via_objc(pid: int):
@@ -394,6 +418,27 @@ def activate_pid_via_objc(pid: int):
         msg_act(ns_app, sel_act, 3)
 
 
+def launch_jianying_via_dock_or_objc() -> bool:
+    dock_pid = get_pid_by_bundle_id("com.apple.dock")
+    if dock_pid:
+        dock_elem = ax.AXUIElementCreateApplication(dock_pid)
+        ok = find_and_press_ax(dock_elem, "剪映专业版", max_depth=5) or find_and_press_ax(dock_elem, "VideoFusion", max_depth=5)
+        cf.CFRelease(dock_elem)
+        if ok:
+            return True
+
+    sp_pid = get_pid_by_bundle_id("com.apple.Spotlight")
+    if sp_pid:
+        sp_elem = ax.AXUIElementCreateApplication(sp_pid)
+        ok = find_and_press_ax(sp_elem, "Search", max_depth=4, include_menubar=True)
+        cf.CFRelease(sp_elem)
+        if ok:
+            time.sleep(0.5)
+            paste_text("剪映专业版", select_all_first=True, press_enter=True, focus_first=False)
+            return True
+    return False
+
+
 def bring_to_front(force: bool = False):
     pid = get_jianying_pid()
     if not pid:
@@ -406,13 +451,6 @@ def bring_to_front(force: bool = False):
         except Exception:
             pass
         ax_set_bool_true(app_elem, "AXFrontmost")
-        res = ax_get_children(app_elem, "AXWindows")
-        if res is not None:
-            wins, arr_ref = res
-            for w in reversed(wins):
-                ax_perform_action(w, "AXRaise")
-                ax_set_bool_true(w, "AXMain")
-            cf.CFRelease(arr_ref)
         time.sleep(0.2)
     cf.CFRelease(app_elem)
     return pid
@@ -445,7 +483,14 @@ def cmd_list_apps():
 def cmd_activate():
     pid = get_jianying_pid()
     if not pid:
-        subprocess.run(['open', '-a', JIANYING_APP_PATH], check=True)
+        launch_jianying_via_dock_or_objc()
+        for _ in range(25):
+            time.sleep(0.5)
+            pid = get_jianying_pid()
+            if pid:
+                break
+    if not pid:
+        subprocess.run(['open', '-a', JIANYING_APP_PATH], check=False)
         for _ in range(15):
             time.sleep(0.5)
             pid = get_jianying_pid()
@@ -458,6 +503,7 @@ def cmd_activate():
     bring_to_front(force=True)
     time.sleep(0.3)
     print(f"Activated Jianying Pro via NSRunningApplication & AXFrontmost (PID: {pid})")
+    return pid
 
 
 def parse_bbox(bbox_str):
@@ -533,12 +579,14 @@ def mouse_move(x: float, y: float):
     pt = CGPoint(x, y)
     cg.CGWarpMouseCursorPosition(pt)
     ev = cg.CGEventCreateMouseEvent(None, kCGEventMouseMoved, pt, kCGMouseButtonLeft)
+    cg.CGEventSetFlags(ev, 0)
     cg.CGEventPost(kCGHIDEventTap, ev)
     cf.CFRelease(ev)
 
 
-def mouse_click(x: float, y: float, button="left", count=1):
-    bring_to_front()
+def mouse_click(x: float, y: float, button="left", count=1, focus_first=True):
+    if focus_first:
+        bring_to_front()
     pt = CGPoint(x, y)
     mouse_move(x, y)
     time.sleep(0.08)
@@ -549,11 +597,13 @@ def mouse_click(x: float, y: float, button="left", count=1):
 
     for i in range(1, count + 1):
         ev_down = cg.CGEventCreateMouseEvent(None, down_type, pt, btn)
+        cg.CGEventSetFlags(ev_down, 0)
         cg.CGEventSetIntegerValueField(ev_down, kCGMouseEventClickState, i)
         cg.CGEventPost(kCGHIDEventTap, ev_down)
         cf.CFRelease(ev_down)
         time.sleep(0.06)
         ev_up = cg.CGEventCreateMouseEvent(None, up_type, pt, btn)
+        cg.CGEventSetFlags(ev_up, 0)
         cg.CGEventSetIntegerValueField(ev_up, kCGMouseEventClickState, i)
         cg.CGEventPost(kCGHIDEventTap, ev_up)
         cf.CFRelease(ev_up)
@@ -568,6 +618,7 @@ def mouse_drag(x1: float, y1: float, x2: float, y2: float, duration=0.6, steps=3
     mouse_move(x1, y1)
     time.sleep(0.1)
     ev_down = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, p1, kCGMouseButtonLeft)
+    cg.CGEventSetFlags(ev_down, 0)
     cg.CGEventPost(kCGHIDEventTap, ev_down)
     cf.CFRelease(ev_down)
     time.sleep(0.1)
@@ -578,12 +629,14 @@ def mouse_drag(x1: float, y1: float, x2: float, y2: float, duration=0.6, steps=3
         pt = CGPoint(cx, cy)
         cg.CGWarpMouseCursorPosition(pt)
         ev_drag = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDragged, pt, kCGMouseButtonLeft)
+        cg.CGEventSetFlags(ev_drag, 0)
         cg.CGEventPost(kCGHIDEventTap, ev_drag)
         cf.CFRelease(ev_drag)
         time.sleep(duration / steps)
     time.sleep(0.1)
     p2 = CGPoint(x2, y2)
     ev_up = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, p2, kCGMouseButtonLeft)
+    cg.CGEventSetFlags(ev_up, 0)
     cg.CGEventPost(kCGHIDEventTap, ev_up)
     cf.CFRelease(ev_up)
     print(f"Mouse dragged from ({x1}, {y1}) to ({x2}, {y2}) -> actual cursor: {get_cursor_pos()}")
@@ -594,6 +647,7 @@ def mouse_scroll(x: float, y: float, dy: int):
     mouse_move(x, y)
     time.sleep(0.08)
     ev = cg.CGEventCreateScrollWheelEvent(None, kCGScrollEventUnitLine, 1, int(dy))
+    cg.CGEventSetFlags(ev, 0)
     cg.CGEventPost(kCGHIDEventTap, ev)
     cf.CFRelease(ev)
     print(f"Mouse scrolled dy={dy} at ({x}, {y})")
@@ -619,21 +673,45 @@ def send_key(combo: str, focus_first=True):
         raise ValueError(f"Unknown key: {key_name}. Supported: {sorted(KEYCODES.keys())}")
     kc = KEYCODES[key_name]
     ev_down = cg.CGEventCreateKeyboardEvent(None, kc, True)
-    if flags:
-        cg.CGEventSetFlags(ev_down, flags)
+    cg.CGEventSetFlags(ev_down, flags)
     cg.CGEventPost(kCGHIDEventTap, ev_down)
     cf.CFRelease(ev_down)
     time.sleep(0.05)
     ev_up = cg.CGEventCreateKeyboardEvent(None, kc, False)
-    if flags:
-        cg.CGEventSetFlags(ev_up, flags)
+    cg.CGEventSetFlags(ev_up, 0)
     cg.CGEventPost(kCGHIDEventTap, ev_up)
     cf.CFRelease(ev_up)
     print(f"Sent key combo: {combo}")
 
 
-def paste_text(text: str, select_all_first=True, press_enter=False):
-    bring_to_front()
+def type_unicode(text: str, press_enter=False, focus_first=False):
+    if focus_first:
+        bring_to_front()
+    cg.CGEventKeyboardSetUnicodeString.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_uint16)]
+    cg.CGEventKeyboardSetUnicodeString.restype = None
+    utf16 = text.encode('utf-16-le')
+    n_chars = len(utf16) // 2
+    buf = (ctypes.c_uint16 * n_chars).from_buffer_copy(utf16)
+    ev_down = cg.CGEventCreateKeyboardEvent(None, 0, True)
+    cg.CGEventSetFlags(ev_down, 0)
+    cg.CGEventKeyboardSetUnicodeString(ev_down, n_chars, buf)
+    cg.CGEventPost(kCGHIDEventTap, ev_down)
+    cf.CFRelease(ev_down)
+    time.sleep(0.05)
+    ev_up = cg.CGEventCreateKeyboardEvent(None, 0, False)
+    cg.CGEventSetFlags(ev_up, 0)
+    cg.CGEventKeyboardSetUnicodeString(ev_up, n_chars, buf)
+    cg.CGEventPost(kCGHIDEventTap, ev_up)
+    cf.CFRelease(ev_up)
+    time.sleep(0.2)
+    if press_enter:
+        send_key('return', focus_first=False)
+    print(f"Typed UTF-16 Unicode string ({len(text)} chars): {text}")
+
+
+def paste_text(text: str, select_all_first=True, press_enter=False, focus_first=True):
+    if focus_first:
+        bring_to_front()
     proc = subprocess.Popen(['pbcopy'], stdin=subprocess.PIPE)
     proc.communicate(input=text.encode('utf-8'))
     time.sleep(0.08)
@@ -752,6 +830,12 @@ def main():
     p_paste.add_argument("--enter", action="store_true", help="Send return after pasting")
     add_post_args(p_paste)
 
+    p_auto = sub.add_parser("auto-caption")
+    p_auto.add_argument("video", help="Absolute path to input video file")
+    p_auto.add_argument("--verify-dir", default=None, help="Directory to save verification screenshots/frames")
+    p_auto.add_argument("--overwrite", action="store_true", help="Allow overwriting existing <stem>_字幕版.mp4")
+    add_post_args(p_auto)
+
     args = parser.parse_args()
 
     if args.cmd == "check-permissions":
@@ -785,6 +869,13 @@ def main():
         send_key(args.combo)
     elif args.cmd == "paste":
         paste_text(args.text, select_all_first=not args.no_select, press_enter=args.enter)
+    elif args.cmd == "auto-caption":
+        import importlib.util
+        flow_path = os.path.join(os.path.dirname(__file__), "jianying_flow.py")
+        spec = importlib.util.spec_from_file_location("jianying_flow", flow_path)
+        flow_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(flow_mod)
+        flow_mod.run_auto_caption(sys.modules[__name__], args.video, verify_dir=args.verify_dir, overwrite=args.overwrite)
 
     if args.ax or args.shot:
         if args.wait > 0:

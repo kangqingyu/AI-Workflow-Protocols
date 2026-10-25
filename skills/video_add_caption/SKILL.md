@@ -13,20 +13,30 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 - **保持原方式不变**：直接使用内置 `cua_repl` 工具操作应用（调用 `cua.listApps()`、`getAXState()`、`setValue` / `paste`、截图及坐标点击）。
 
 ### B. Antigravity 环境（无内置 `cua_repl` 工具）
-- **使用本地 macOS Computer Use 脚本**：通过 `run_command`（设置 `BypassSandbox: true` 以访问 macOS 桌面 GUI 与无障碍服务）调用本技能内置的 [scripts/mac_cua.py](scripts/mac_cua.py)，并配合 `view_file` 查看截图，实现与 `cua_repl` 1:1 等价的界面操作：
+- **核心原则 1（固定流程极速化：单进程流水线代替逐轮交互）**：
+  - 剪映「新建草稿 → 导入视频入轨 → 智能识别字幕 → 展开预设样式并套用黄底黑字 → 导出 `_字幕版.mp4`」全流程完全固定。
+  - 在 Antigravity 下，**严禁**一步一截图、一步一轮 LLM 往返；**必须直接执行单进程极速流水线 `auto-caption`**（默认在标准沙盒 `BypassSandbox: false` 下运行，无需权限审批，将原本 25~30 次跨进程调用压缩为 1 次命令调用，UI 操作耗时仅数秒）：
+    - `python3 -u /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py auto-caption "<源视频绝对路径>" --verify-dir "<校验截图输出目录>"`
+- **核心原则 2（“黄底黑字”预设样式快速定位法则：微滚即停 + 先点底部中央 `▼` 展开第三行）**：
+  - **避坑要点**：右侧「文本 → 基础」面板中的「预设样式」初始默认处于**折叠状态**，仅显示第 1 行和半截第 2 行，**位于第 3 行第 1 个的“黄底黑字”默认是隐藏的**。切勿大幅向下滚动寻找，否则会直接滚过「预设样式」进入下方的「混合 / 描边 / 背景 / 发光 / 阴影」，导致无论怎么滚动都看不到“黄底黑字”。
+  - **标准三步动作**：
+    1. **微滚即停**：选中时间线字幕后，「预设样式」标题就在右侧面板中下部（初始 `y ≈ 480~580`），只需向下轻滚 **1~2 格**（让 `value="预设样式"` 标题停在 `y ≈ 320~430`）立即停止滚动；若不小心滚过头（`y < 320`），向上回滚即可。
+    2. **点击底部正中央 `▼` 展开箭头**：展开按钮不在标题栏右侧，而在「预设样式」两行网格**底部正中央**（逻辑坐标约为 `(1513.5, 预设样式标题Y + 114)`，约 `(1513.5, 505)`，悬停提示为「展开」）。单击一次该 `▼` 箭头即可展开隐藏的第 3 行。
+    3. **直取第三行第一个（最左侧）**：展开后，**第 3 行第 1 列（Row 3, Col 1）**即为目标「黄底黑字」预设（亮黄色实心底 + 黑色 `T`，对应无障碍树第 17 个 `automationstyleIconRepeaterItem`，即 `index 16`，坐标约为 `(1340, 预设样式标题Y + 144)`）。
+- **分步调试 / 自定义微调指令**（底层由 [scripts/mac_cua.py](scripts/mac_cua.py) 与 [scripts/jianying_flow.py](scripts/jianying_flow.py) 提供，与 `cua_repl` 1:1 等价）：
   - **列出/激活应用**（对应 `cua.listApps()` 与连接应用）：
     - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py list-apps`
     - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py activate`
   - **读取无障碍树**（对应 `getAXState()`）：
-    - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py ax-state --depth 10`（可加 `--filter 关键词`；输出包含每个元素的逻辑坐标 `rect=(x,y,w,h)` 与中心点 `center=(cx,cy)`）
-  - **1:1 逻辑坐标截图**（配合 `view_file` 视觉确认）：
+    - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py ax-state --depth 10`（可加 `--filter 关键词` 或 `--head N`；输出包含每个元素的逻辑坐标 `rect=(x,y,w,h)` 与中心点 `center=(cx,cy)`）
+  - **1:1 逻辑坐标截图**（配合 `read_file` 视觉确认）：
     - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py screenshot <截图保存路径.png>`（自动将 Retina 截图缩放到与屏幕逻辑点 `1:1` 对齐，图片像素 `(x, y)` 直接等于点击坐标 `(x, y)`；支持 `--rect x,y,w,h` 局部截图）
   - **鼠标、滚轮与键盘输入**：
     - 点击：`click <x> <y>`、`double-click <x> <y>`、`right-click <x> <y>`
     - 拖放：`drag <x1> <y1> <x2> <y2>`
     - 滚动：`scroll <x> <y> <dy>`（`dy` 为负数时向下滚动）
     - 快捷键：`key cmd+shift+g`、`key return`、`key space`、`key escape`
-    - 中文路径粘贴（对应 `setValue` / `paste`）：`paste "<路径或文本>"`（底层通过 `pbcopy` + `cmd+v` 输入，避免中文漏字）
+    - 中文路径/文本输入（对应 `setValue` / `paste`）：脚本内置 `type_unicode`（基于 `CGEventKeyboardSetUnicodeString` 直接注入 UTF-16 字符，不依赖系统剪贴板，完全兼容标准沙盒与模态文件选择器）及 `paste "<路径或文本>"`。
 
 ## 输入与默认值
 
@@ -78,9 +88,9 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 
 ![展开箭头与黄底黑字预设位置](assets/preset-yellow-black-guide.png)
 
-1. 在右侧属性面板内部向下滚动，直到看到「预设样式」和一组字母 T 小方块。本次版本从面板顶部向下滚动约两屏即可到达；以标题为准，看到后就停止滚动，不滚动整个编辑器或时间线。
-2. 先看网格是否完整：折叠状态通常只显示第一行和一部分第二行，下方图标被渐隐遮住。点击网格底部中央的小向下箭头一次展开；不要点击「预设样式」标题，也不要反复点击箭头造成展开后又收起。
-3. 展开后寻找 **整个方块是亮黄色实心底，中央是黑色 T** 的图标。本次剪映版本验证的位置是 **第三行第一个（最左侧）**。先检查这个位置，可省去逐个试点；版本或布局变化时仍以图标外观为准。
+1. **微滚即停（切勿滚远）**：在右侧「文本 → 基础」面板中，初始状态下「预设样式」标题其实就在面板中下部（`y ≈ 480~580`），**只需向下轻滚 1~2 格**（使 `预设样式` 标题停在面板中上部 `y ≈ 320~430`）即可看到「预设样式」和前两行字母 T 小方块。**千万不要大幅向下滚动（更不要滚两屏）**，否则会直接滚过「预设样式」进入下方的「混合 / 描边 / 背景 / 发光 / 阴影」区域。若不慎滚过头，向上回滚直到重新看到「预设样式」标题。
+2. **先点击底部中央 `▼` 箭头展开第三行**：「预设样式」初始**默认处于折叠状态**，只露出第一行和半截第二行，**第三行默认是隐藏的**。展开按钮不在标题栏右侧，而在两行网格**底部正中央的小向下箭头 `▼`**（悬停提示为「展开」，逻辑坐标约为 `(1513.5, 预设样式标题Y + 114)`）。必须先单击该 `▼` 箭头一次，第三行才会展开显示；不要点击「预设样式」标题，也不要反复点击箭头造成展开后又收起。
+3. **直接选择第三行第一个（最左侧）**：展开后寻找 **整个方块是亮黄色实心底，中央是黑色 T** 的图标。位置固定在 **第三行第一个（最左侧，Row 3 Col 1，对应无障碍树第 17 个 `automationstyleIconRepeaterItem`，即 `index 16`）**。先展开再点这个位置，可一步到位，省去盲目滚动与逐个试点。
 4. 区分容易误选的图标：第一行中的「黄色 T + 深灰底」会生成黄色文字，不是目标；目标必须是「黄色底 + 黑色 T」。不要凭黄色元素或字母颜色单独判断。
 5. 若目标不在上述位置，先确认网格已展开且能看到第三行，再在当前可见网格中按外观查找；确需滚动时只在右侧面板继续滚动，并重新截图定位。不要通过切换字体、花字、气泡或字幕模板寻找这个预设。
 6. 根据最新截图点击目标一次，随后读取 `getAXState()`（Antigravity 下使用 `mac_cua.py ax-state` 或重新 `screenshot`）。本次版本预设图标通常不暴露有意义的 AX 名称，坐标点击更直接；坐标必须从当前截图取得，不保存或复用某次操作的绝对坐标。
