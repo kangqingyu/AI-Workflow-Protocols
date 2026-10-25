@@ -237,7 +237,17 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
                 break
     if not timeline_root:
         raise RuntimeError("Failed to open Jianying Editor window (MainTimeLineRoot not found).")
-    print(f"[{time.time() - t_start:.1f}s] Step 1/5 complete ({time.time() - t0:.1f}s): Draft ready.")
+
+    # Rename Jianying project/draft in top-center title bar (864.0, 51.0) to match target_stem (<stem>_字幕版)
+    print(f"[{time.time() - t_start:.1f}s] Renaming Jianying project title to '{target_stem}' at (864.0, 51.0)")
+    cua.mouse_click(864.0, 51.0, focus_first=False)
+    time.sleep(0.25)
+    cua.send_key("delete", focus_first=False)
+    time.sleep(0.1)
+    cua.type_unicode(target_stem, press_enter=True, focus_first=False)
+    time.sleep(0.35)
+    nodes = get_app_nodes(cua, max_depth=6)
+    print(f"[{time.time() - t_start:.1f}s] Step 1/5 complete ({time.time() - t0:.1f}s): Draft ready and named '{target_stem}'.")
 
     # --- STEP 2: Import Video & Add to Timeline ---
     t0 = time.time()
@@ -471,25 +481,30 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
                 fname_input = find_node(nodes, lambda n: n["desc"] == "ExportFileNameInput")
                 ok_btn = find_node(nodes, lambda n: n["title"] == "ExportOkBtn" or n["desc"] == "ExportOkBtn")
 
-    for attempt in range(3):
-        fx, fy = fname_input["center"]
-        print(f"[{time.time() - t_start:.1f}s] Setting export title to '{target_stem}' at {(fx, fy)} (attempt {attempt + 1})")
-        # Click center of ExportFileNameInput (rect=992..1168, center=(1080, 316), which sits right after default title '10月25日 (N)')
-        cua.mouse_click(fx, fy, focus_first=False)
-        time.sleep(0.2)
-        for _ in range(25):
-            cua.send_key("delete", focus_first=False)
-            time.sleep(0.01)
-        time.sleep(0.15)
-        cua.type_unicode(target_stem, press_enter=False, focus_first=False)
-        time.sleep(0.45)
+    path_node = find_node(nodes, lambda n: n["desc"].endswith(".mp4") and "/" in n["desc"])
+    actual_path = path_node["desc"] if path_node else ""
+    if actual_path.endswith(f"/{target_stem}.mp4"):
+        print(f"[{time.time() - t_start:.1f}s] Export path already matches project title: '{actual_path}'")
+    else:
+        for attempt in range(3):
+            fx, fy = fname_input["center"]
+            print(f"[{time.time() - t_start:.1f}s] Setting export title to '{target_stem}' at {(fx, fy)} (attempt {attempt + 1})")
+            # Click center of ExportFileNameInput (rect=992..1168, center=(1080, 316), which sits right after default title)
+            cua.mouse_click(fx, fy, focus_first=False)
+            time.sleep(0.2)
+            for _ in range(25):
+                cua.send_key("delete", focus_first=False)
+                time.sleep(0.01)
+            time.sleep(0.15)
+            cua.type_unicode(target_stem, press_enter=False, focus_first=False)
+            time.sleep(0.45)
 
-        nodes = get_app_nodes(cua, max_depth=6)
-        path_node = find_node(nodes, lambda n: n["desc"].endswith(".mp4") and "/" in n["desc"])
-        actual_path = path_node["desc"] if path_node else ""
-        print(f"[{time.time() - t_start:.1f}s] Verified export path node: '{actual_path}'")
-        if actual_path.endswith(f"/{target_stem}.mp4"):
-            break
+            nodes = get_app_nodes(cua, max_depth=6)
+            path_node = find_node(nodes, lambda n: n["desc"].endswith(".mp4") and "/" in n["desc"])
+            actual_path = path_node["desc"] if path_node else ""
+            print(f"[{time.time() - t_start:.1f}s] Verified export path node: '{actual_path}'")
+            if actual_path.endswith(f"/{target_stem}.mp4"):
+                break
 
     print(f"[{time.time() - t_start:.1f}s] Clicking ExportOkBtn at {ok_btn['center']} and waiting for 导出成功...")
     cua.mouse_click(*ok_btn["center"])
