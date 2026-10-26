@@ -44,6 +44,8 @@
 
 `notes` 每项为 `{ "text": "说明文字", "source": [] }`，`source` 遵循来源范围数组。
 
+`key_message`、`content_structure`、`notes` 及 `issues` 中的文字同样遵循**直接陈述原则**，直接概括核心观点、补充案例细节或说明取舍原因，不使用 `"作者认为"`、`"作者体验"`、`"文章提出"`、`"原文主张"`、`"原文认为"` 等第三人称转述主语。
+
 所有 `content_index` 都从 **0** 开始，指向该页有效分支中的 `content` 数组：封面为 `cover.content`，目录为 `table_of_contents.content`，正文为 `parts[0].pages[0].content`，额外结束页为 `end_page.content`。
 
 页面类型必须与展示有效分支对应。正文、问题和作业的 `part_id` 均须存在，并且章节的 `part_title` 与该展示文件一致。
