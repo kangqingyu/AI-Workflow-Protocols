@@ -1,0 +1,3 @@
+interface:
+  display_name: "ScreenFlow Recording Polish"
+  short_description: "Set clip speed, canvas size, camera audio, and blur"
