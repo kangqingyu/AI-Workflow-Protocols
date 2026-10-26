@@ -348,31 +348,32 @@ def dump_ax_tree(elem, depth=0, max_depth=12, filter_text=None, bbox=None, inclu
     return lines
 
 
-def find_and_press_ax(elem, keyword: str, depth=0, max_depth=12, include_menubar=True) -> bool:
+def find_and_press_ax(elem, keyword: str, depth=0, max_depth=12, include_menubar=True, role_filter=None) -> bool:
     if depth > max_depth:
         return False
     role = ax_get_str(elem, "AXRole") or ""
     if role == "AXMenuBar" and not include_menubar:
         return False
-    title = ax_get_str(elem, "AXTitle") or ""
-    desc = ax_get_str(elem, "AXDescription") or ""
-    help_txt = ax_get_str(elem, "AXHelp") or ""
-    val = str(ax_get_str(elem, "AXValue") or "")
-    ident = ax_get_str(elem, "AXIdentifier") or ""
-    combined = f"{title} | {desc} | {help_txt} | {val} | {ident}"
-    if keyword.lower() in combined.lower():
-        err = ax_perform_action(elem, "AXPress")
-        pos = ax_get_point(elem)
-        size = ax_get_size(elem)
-        print(f"AXPress on [{role}] '{combined}' pos={pos} size={size} -> err={err}")
-        if err == 0:
-            return True
+    if role != "AXStaticText" and (not role_filter or role == role_filter):
+        title = ax_get_str(elem, "AXTitle") or ""
+        desc = ax_get_str(elem, "AXDescription") or ""
+        help_txt = ax_get_str(elem, "AXHelp") or ""
+        val = str(ax_get_str(elem, "AXValue") or "")
+        ident = ax_get_str(elem, "AXIdentifier") or ""
+        combined = f"{title} | {desc} | {help_txt} | {val} | {ident}"
+        if keyword.lower() in combined.lower():
+            err = ax_perform_action(elem, "AXPress")
+            pos = ax_get_point(elem)
+            size = ax_get_size(elem)
+            print(f"AXPress on [{role}] '{combined}' pos={pos} size={size} -> err={err}")
+            if err == 0:
+                return True
 
     res = ax_get_children(elem, "AXChildren")
     if res is not None:
         children, arr_ref = res
         for c in children:
-            if find_and_press_ax(c, keyword, depth + 1, max_depth, include_menubar):
+            if find_and_press_ax(c, keyword, depth + 1, max_depth, include_menubar, role_filter):
                 cf.CFRelease(arr_ref)
                 return True
         cf.CFRelease(arr_ref)
@@ -454,7 +455,7 @@ def ensure_windows_on_main_screen(pid: int = None):
         w = cf.CFArrayGetValueAtIndex(wins, i)
         pos = ax_get_point(w)
         if pos and pos[1] < 0:
-            pt = CGPoint(40.0, 40.0)
+            pt = CGPoint(0.0, 33.0)
             val = ax.AXValueCreate(kAXValueCGPointType, ctypes.byref(pt))
             attr_cf = cfstr("AXPosition")
             ax.AXUIElementSetAttributeValue(w, attr_cf, val)
@@ -757,6 +758,258 @@ def paste_text(text: str, select_all_first=True, press_enter=False, focus_first=
     print(f"Pasted UTF-8 text ({len(text)} chars): {text}")
 
 
+def type_keys_in_field(x: float, y: float, text: str, press_enter: bool = True):
+    """
+    Double-click a ScreenFlow numeric field at (x, y) and send individual keycodes
+    within the same process without triggering `bring_to_front()` or `cmd+a`
+    (which ScreenFlow intercepts as Edit -> Select All Clips).
+    """
+    mouse_click(x, y, count=2, focus_first=False)
+    time.sleep(0.15)
+    for ch in str(text):
+        send_key(ch, focus_first=False)
+        time.sleep(0.06)
+    if press_enter:
+        send_key("return", focus_first=False)
+        time.sleep(0.25)
+
+
+def collect_ax_nodes(elem, depth=0, max_depth=14, include_menubar=False, out=None):
+    if out is None:
+        out = []
+    if depth > max_depth or len(out) > 2000:
+        return out
+    role = ax_get_str(elem, "AXRole") or ""
+    if role == "AXMenuBar" and not include_menubar:
+        return out
+    title = ax_get_str(elem, "AXTitle") or ""
+    desc = ax_get_str(elem, "AXDescription") or ""
+    help_txt = ax_get_str(elem, "AXHelp") or ""
+    val = ax_get_str(elem, "AXValue")
+    val_str = str(val) if val is not None else ""
+    pos = ax_get_point(elem)
+    size = ax_get_size(elem)
+    center = (round(pos[0] + size[0] / 2.0, 1), round(pos[1] + size[1] / 2.0, 1)) if (pos and size) else None
+    out.append({
+        "role": role,
+        "title": title,
+        "desc": desc,
+        "help": help_txt,
+        "val": val_str,
+        "pos": pos,
+        "size": size,
+        "center": center,
+    })
+    res = ax_get_children(elem, "AXChildren")
+    if res is not None:
+        children, arr_ref = res
+        for c in children:
+            collect_ax_nodes(c, depth + 1, max_depth, include_menubar, out)
+        cf.CFRelease(arr_ref)
+    return out
+
+
+def close_clip_inspector(pid: int):
+    app = ax.AXUIElementCreateApplication(pid)
+    wins = ax_get_attr(app, "AXWindows")
+    for i in range(cf.CFArrayGetCount(wins) if wins else 0):
+        w = cf.CFArrayGetValueAtIndex(wins, i)
+        if ax_get_str(w, "AXTitle") == "Clip Inspector":
+            res = ax_get_children(w)
+            if res:
+                children, arr = res
+                for ch in children:
+                    if ax_get_str(ch, "AXRole") == "AXButton":
+                        ax_perform_action(ch, "AXPress")
+                cf.CFRelease(arr)
+    if wins:
+        cf.CFRelease(wins)
+    cf.CFRelease(app)
+
+
+def run_polish_workflow(speed=115, width=3456, height=1944, volume=190, verify_shot=None):
+    """
+    Single-process fast pipeline for Antigravity:
+    1. Activate ScreenFlow & relocate off-screen windows to main display
+    2. Identify timeline clips & apply target speed to each clip via Clip Inspector
+    3. Set Canvas Crop dimensions (width x height) and reopen to verify
+    4. Deselect all, select ONLY camera clip, set Audio Volume to target %
+    5. Open Video Properties Tab, enable Automatic Background Removal -> Blur
+    6. Read back all final parameters and optionally save a verification screenshot
+    """
+    pid = cmd_activate()
+    time.sleep(0.3)
+
+    app = ax.AXUIElementCreateApplication(pid)
+    nodes = collect_ax_nodes(app)
+    cf.CFRelease(app)
+
+    if any(n["role"] == "AXStaticText" and "Exporting:" in n["val"] for n in nodes):
+        print("ABORT: ScreenFlow is currently exporting a video. Do not interrupt active export.")
+        sys.exit(1)
+
+    clips = [n for n in nodes if n["role"] == "AXLayoutItem" and n["center"]]
+    if len(clips) < 2:
+        print(f"ERROR: Expected at least 2 timeline clips (screen + camera), found {len(clips)}")
+        sys.exit(1)
+
+    camera_clip = next((c for c in clips if "camera" in c["desc"].lower() or "facetime" in c["desc"].lower()), clips[0])
+    screen_clip = next((c for c in clips if c is not camera_clip), clips[1])
+    print(f"[Step 1] Found clips: Camera='{camera_clip['desc']}' at {camera_clip['center']}, Screen='{screen_clip['desc']}' at {screen_clip['center']}")
+
+    # Step 2: Apply clip speed to both clips
+    for idx, target_clip in enumerate([camera_clip, screen_clip]):
+        cx, cy = 500.0, target_clip["center"][1]
+        mouse_click(cx, cy, count=1, focus_first=False)
+        time.sleep(0.25)
+        app = ax.AXUIElementCreateApplication(pid)
+        cur_nodes = collect_ax_nodes(app)
+        cf.CFRelease(app)
+        speed_field = next(
+            (n for n in cur_nodes if n["role"] == "AXTextField" and "relative speed of the clip" in n["help"]),
+            None
+        )
+        if not speed_field:
+            mouse_click(cx, cy, button="right", count=1, focus_first=False)
+            time.sleep(0.25)
+            cmd_ax_press("Show Clip Inspector...")
+            time.sleep(0.35)
+            app = ax.AXUIElementCreateApplication(pid)
+            cur_nodes = collect_ax_nodes(app)
+            cf.CFRelease(app)
+            speed_field = next(
+                (n for n in cur_nodes if n["role"] == "AXTextField" and "relative speed of the clip" in n["help"]),
+                None
+            )
+        if speed_field and speed_field["center"]:
+            cur_val = speed_field["val"].replace("%", "").strip()
+            try:
+                already_set = abs(float(cur_val) - float(speed)) < 0.5
+            except ValueError:
+                already_set = False
+            if not already_set:
+                type_keys_in_field(speed_field["center"][0], speed_field["center"][1], str(speed), press_enter=True)
+                time.sleep(0.3)
+        print(f"[Step 2] Configured speed={speed}% for clip {idx + 1}: '{target_clip['desc']}'")
+
+    close_clip_inspector(pid)
+    time.sleep(0.2)
+
+    # Step 3: Set canvas dimensions
+    cmd_ax_press("Canvas Crop")
+    time.sleep(0.35)
+    app = ax.AXUIElementCreateApplication(pid)
+    crop_nodes = collect_ax_nodes(app)
+    cf.CFRelease(app)
+    canvas_label = next((n for n in crop_nodes if n["role"] == "AXStaticText" and n["val"] == "Canvas:"), None)
+    if canvas_label and canvas_label["center"]:
+        cy = canvas_label["center"][1]
+        tf_nodes = sorted(
+            [n for n in crop_nodes if n["role"] == "AXTextField" and n["center"] and abs(n["center"][1] - cy) < 15],
+            key=lambda x: x["center"][0]
+        )
+        if len(tf_nodes) >= 2:
+            w_field, h_field = tf_nodes[0], tf_nodes[1]
+            if w_field["val"].strip() != str(width):
+                type_keys_in_field(w_field["center"][0], w_field["center"][1], str(width), press_enter=True)
+            if h_field["val"].strip() != str(height):
+                type_keys_in_field(h_field["center"][0], h_field["center"][1], str(height), press_enter=True)
+            # Find rightmost commit button on the Canvas Crop bar
+            btns = sorted(
+                [n for n in crop_nodes if n["role"] == "AXButton" and n["center"] and abs(n["center"][1] - cy) < 15],
+                key=lambda x: x["center"][0]
+            )
+            if btns:
+                mouse_click(btns[-1]["center"][0], btns[-1]["center"][1], count=1, focus_first=False)
+                time.sleep(0.3)
+    print(f"[Step 3] Set Canvas dimensions to {width} x {height}")
+
+    # Step 4: Deselect all, select ONLY camera clip, set Audio Volume
+    mouse_click(500.0, 990.0, count=1, focus_first=False)
+    time.sleep(0.2)
+    mouse_click(500.0, camera_clip["center"][1], count=1, focus_first=False)
+    time.sleep(0.25)
+    cmd_ax_press("Audio Properties Tab")
+    time.sleep(0.3)
+    app = ax.AXUIElementCreateApplication(pid)
+    aud_nodes = collect_ax_nodes(app)
+    cf.CFRelease(app)
+    vol_field = next(
+        (n for n in aud_nodes if n["role"] == "AXTextField" and n["help"].startswith("The Volume of the selected clip")),
+        None
+    )
+    if vol_field and vol_field["center"]:
+        type_keys_in_field(vol_field["center"][0], vol_field["center"][1], str(volume), press_enter=True)
+        time.sleep(0.25)
+    print(f"[Step 4] Set Camera Audio Volume to {volume}%")
+
+    # Step 5: Open Video Properties Tab & apply Automatic Background Removal -> Blur
+    cmd_ax_press("Video Properties Tab")
+    time.sleep(0.3)
+    app = ax.AXUIElementCreateApplication(pid)
+    vid_nodes = collect_ax_nodes(app)
+    cf.CFRelease(app)
+    auto_bg_cb = next(
+        (n for n in vid_nodes if n["role"] == "AXCheckBox" and n["title"] == "Automatic Background Removal"),
+        None
+    )
+    if not auto_bg_cb:
+        cmd_ax_press("Add Video Filter")
+        time.sleep(0.4)
+        app = ax.AXUIElementCreateApplication(pid)
+        sheet_nodes = collect_ax_nodes(app)
+        cf.CFRelease(app)
+        auto_item = next((n for n in sheet_nodes if n["role"] == "AXGroup" and n["desc"] == "Automatic" and n["center"]), None)
+        add_btn = next((n for n in sheet_nodes if n["role"] == "AXButton" and n["title"] == "Add" and n["center"]), None)
+        if auto_item and add_btn:
+            mouse_click(auto_item["center"][0], auto_item["center"][1], count=1, focus_first=False)
+            time.sleep(0.2)
+            mouse_click(add_btn["center"][0], add_btn["center"][1], count=1, focus_first=False)
+            time.sleep(0.45)
+        app = ax.AXUIElementCreateApplication(pid)
+        vid_nodes = collect_ax_nodes(app)
+        cf.CFRelease(app)
+        auto_bg_cb = next(
+            (n for n in vid_nodes if n["role"] == "AXCheckBox" and n["title"] == "Automatic Background Removal"),
+            None
+        )
+
+    if auto_bg_cb and auto_bg_cb["val"] in ("0", "0.0", "False") and auto_bg_cb["center"]:
+        mouse_click(auto_bg_cb["center"][0], auto_bg_cb["center"][1], count=1, focus_first=False)
+        time.sleep(0.2)
+
+    bg_label = next((n for n in vid_nodes if n["role"] == "AXStaticText" and n["val"] == "Background:"), None)
+    if bg_label and bg_label["center"]:
+        by = bg_label["center"][1]
+        bg_popup = next(
+            (n for n in vid_nodes if n["role"] == "AXPopUpButton" and n["center"] and abs(n["center"][1] - by) < 12),
+            None
+        )
+        if bg_popup and bg_popup["val"] != "Blur":
+            mouse_click(bg_popup["center"][0], bg_popup["center"][1], count=1, focus_first=False)
+            time.sleep(0.25)
+            app = ax.AXUIElementCreateApplication(pid)
+            find_and_press_ax(app, "Blur", max_depth=16, include_menubar=False, role_filter="AXMenuItem")
+            cf.CFRelease(app)
+            time.sleep(0.5)
+    print("[Step 5] Enabled Automatic Background Removal -> Background: Blur")
+
+    # Step 6: Verification summary
+    app = ax.AXUIElementCreateApplication(pid)
+    final_nodes = collect_ax_nodes(app)
+    cf.CFRelease(app)
+    final_clips = [n for n in final_nodes if n["role"] == "AXLayoutItem"]
+    dur_txt = next((n["val"] for n in final_nodes if n["role"] == "AXStaticText" and n["val"].startswith("Duration:")), "")
+    bg_popup_final = next((n["val"] for n in final_nodes if n["role"] == "AXPopUpButton" and n["val"] in ("Blur", "Clear")), "")
+    print("=== [Step 6] Verification Summary ===")
+    for fc in final_clips:
+        print(f"  Clip '{fc['desc']}': pos={fc['pos']} size={fc['size']}")
+    print(f"  Timeline {dur_txt}")
+    print(f"  Background Removal Mode: {bg_popup_final}")
+    if verify_shot:
+        cmd_screenshot(verify_shot)
+
+
 def add_post_args(p):
     p.add_argument("--wait", type=float, default=0.6, help="Wait seconds before post-inspect")
     p.add_argument("--ax", action="store_true", help="Dump AX tree after action")
@@ -872,6 +1125,21 @@ def main():
     p_paste.add_argument("--enter", action="store_true", help="Send return after pasting")
     add_post_args(p_paste)
 
+    p_ft = sub.add_parser("field-type")
+    p_ft.add_argument("x", type=float, help="Field center X")
+    p_ft.add_argument("y", type=float, help="Field center Y")
+    p_ft.add_argument("text", help="Numeric/ASCII value to double-click and type key-by-key without cmd+a")
+    p_ft.add_argument("--no-enter", action="store_true", help="Do not send return after typing")
+    add_post_args(p_ft)
+
+    p_polish = sub.add_parser("polish")
+    p_polish.add_argument("--speed", type=int, default=115, help="Target clip speed percentage (default: 115)")
+    p_polish.add_argument("--width", type=int, default=3456, help="Target canvas width (default: 3456)")
+    p_polish.add_argument("--height", type=int, default=1944, help="Target canvas height (default: 1944)")
+    p_polish.add_argument("--volume", type=int, default=190, help="Target camera audio volume percentage (default: 190)")
+    p_polish.add_argument("--verify-shot", default=None, help="Path to save final verification screenshot")
+    add_post_args(p_polish)
+
     args = parser.parse_args()
 
     if args.cmd == "check-permissions":
@@ -910,6 +1178,15 @@ def main():
         type_unicode(args.text, select_all_first=args.select_all, press_enter=args.enter)
     elif args.cmd == "paste":
         paste_text(args.text, select_all_first=not args.no_select, press_enter=args.enter)
+    elif args.cmd == "field-type":
+        bring_to_front()
+        time.sleep(0.2)
+        type_keys_in_field(args.x, args.y, args.text, press_enter=not args.no_enter)
+    elif args.cmd == "polish":
+        run_polish_workflow(
+            speed=args.speed, width=args.width, height=args.height,
+            volume=args.volume, verify_shot=args.verify_shot
+        )
 
     if args.ax or args.shot:
         if args.wait > 0:

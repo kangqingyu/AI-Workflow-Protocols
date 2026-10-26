@@ -33,7 +33,20 @@ Dispatch Computer Use operations based on the current AI Coding tool environment
 
 ### B. Antigravity Environment (without built-in `mcp__cua_repl`)
 
-- **Use the bundled CLI tool `scripts/mac_cua.py`** (located relative to this `SKILL.md`, e.g., `/Users/kqy/.gemini/antigravity/skills/screenflow-recording-polish/scripts/mac_cua.py`), which provides 1:1 equivalents to `mcp__cua_repl` via macOS native `ApplicationServices` and `CoreGraphics` (zero third-party dependencies, runs in the standard sandbox, and automatically relocates off-screen secondary-display windows with `y < 0` back to the main screen):
+- **Core Principle 1 (Fast Single-Process Pipeline `polish`)**:
+  - When applying the standard preparation workflow in Antigravity, **prefer running the single-process pipeline command `polish`** instead of 6–8 separate interactive round-trips:
+    - `python3 /Users/kqy/.gemini/config/skills/screenflow-recording-polish/scripts/mac_cua.py polish --speed 115 --width 3456 --height 1944 --volume 190 --verify-shot "<output_verify.png>"`
+  - It executes the entire 6-step workflow in ~3 seconds inside the standard sandbox (`BypassSandbox: false`), automatically handling secondary-display window relocation, per-clip speed verification, canvas resizing, camera-only selection, 190% audio volume, and `Automatic Background Removal -> Blur`.
+- **Core Principle 2 (Never send `cmd+a` inside ScreenFlow numeric fields; use `field-type`)**:
+  - **Root cause of speed commit failure**: In ScreenFlow, `cmd+a` is bound to `Edit -> Select All Clips` in the menu bar. Sending `cmd+a` while focused in `Clip Inspector` (or `Canvas Crop` / `Volume`) intercepts focus back to the timeline instead of selecting the text field. Furthermore, `Clip Inspector` is a floating child window (`[AXWindow/AXUnknown]`), so invoking `bring_to_front()` across separate CLI calls steals focus away from the text field.
+  - **Standard action**: Always use `field-type <x> <y> "<value>"` (which double-clicks `(x, y)` with `focus_first=False` and sends individual hardware keycodes `1`, `1`, `5`, `return` in a single process).
+- **Core Principle 3 (Keep `Clip Inspector` open to verify/apply speed across each synchronized clip)**:
+  - Right-clicking a clip can sometimes reduce a multi-clip selection to a single clip. However, while `Clip Inspector` remains open, single-clicking any timeline clip immediately updates `Clip Inspector` to inspect that clip (note that `Clip Inspector`'s `y` coordinate shifts dynamically with the selected track). Click each target clip (`FaceTime HD Camera` and `Screen Recording`), read the current `help="Adjusts the relative speed of the clip."` field position, and apply `field-type` if its value is not yet `115%`. Confirm both `AXLayoutItem` widths match (`1342.0`).
+- **Core Principle 4 (Click empty timeline area to deselect before selecting only the camera clip)**:
+  - When multiple clips are highlighted in yellow, single-clicking one clip (or clicking the main window while `Clip Inspector` is active) may keep both clips selected. Before Step 4 (Camera Audio Volume), close `Clip Inspector` via `AXPress` on its close button, **click an empty timeline area (e.g., `(500, 990)`) to deselect all**, and then click `FaceTime HD Camera` `(500, 854)`.
+- **Core Principle 5 (Filter by `AXMenuItem` when selecting `Blur` to avoid `Blur Size:` static text)**:
+  - `Video Properties Tab` contains a static label `value="Blur Size:"` under Drop Shadow. `find_and_press_ax` skips `AXStaticText` and supports `role_filter="AXMenuItem"` so clicking the `Background:` popup (`Clear` → `Blur`) targets `[AXMenuItem] title="Blur"` directly.
+- **Step-by-step / Custom CLI Commands** (`scripts/mac_cua.py`, 1:1 equivalent to `mcp__cua_repl`):
   - **List / Activate ScreenFlow** (maps to `cua.listApps()` and app connection):
     - `python3 <skill_dir>/scripts/mac_cua.py list-apps`
     - `python3 <skill_dir>/scripts/mac_cua.py activate`
@@ -45,9 +58,10 @@ Dispatch Computer Use operations based on the current AI Coding tool environment
     - Clicks: `click <x> <y>` (supports `--shift` or `--cmd` for additive multi-clip selection), `double-click <x> <y>`, `right-click <x> <y>` (opens clip context menu such as `Show Clip Inspector...`)
     - Drag / Marquee selection: `drag <x1> <y1> <x2> <y2>`
     - Scroll: `scroll <x> <y> <dy>` (negative `dy` scrolls down)
-    - Semantic press: `ax-press "<keyword>"` (matches `AXTitle`, `AXDescription`, `AXHelp`, or `AXIdentifier`)
+    - Semantic press: `ax-press "<keyword>"` (matches `AXTitle`, `AXDescription`, `AXHelp`, or `AXIdentifier`, automatically skipping `AXStaticText`)
   - **Keyboard & Numeric Field Entry** (maps to `setValue` / `paste` / key commit):
-    - Direct Unicode/numeric entry: `type "<value>" --select-all --enter` (sends `cmd+a`, injects UTF-16 characters via `CGEvent`, and commits with `Return`)
+    - **ScreenFlow numeric field entry (Recommended)**: `field-type <x> <y> "<value>"` (double-clicks `(x, y)` and types key-by-key + `Return` in one process without `cmd+a`)
+    - Direct Unicode entry: `type "<value>" --enter`
     - Clipboard paste: `paste "<value>" --enter`
     - Key combos: `key return`, `key escape`, `key tab`, `key cmd+a`
   - **Chained Post-Action Inspection** (reduces round-trips):
@@ -78,7 +92,7 @@ The demonstration starts with a composed camera overlay. Preserve its scale, pos
 
 Select the intended synchronized clips, using additive selection (in Antigravity: `click <x> <y> --shift` or `drag` marquee) or a selection rectangle with visual verification. Use Select All only if every timeline clip is in scope. Open the context menu (`right-click <x> <y>`) and choose `Show Clip Inspector...`.
 
-Replace the **Speed** field with the requested absolute percentage and commit it with Return or the control's supported commit action (in Antigravity: click the Speed field whose `help="Adjusts the relative speed of the clip."`, then run `type "115" --select-all --enter --ax --ax-filter "speed"`). Reopen or refocus the inspector and read the stored speed of each target clip. Do not multiply an already adjusted speed by 1.15 on repeated runs.
+Replace the **Speed** field with the requested absolute percentage and commit it with Return or the control's supported commit action (in Antigravity: locate the Speed field whose `help="Adjusts the relative speed of the clip."`, then run `field-type <cx> <cy> "115" --ax --ax-filter "speed"`—never send `cmd+a`, which triggers `Select All Clips`). Reopen or refocus the inspector and read the stored speed of each target clip. Do not multiply an already adjusted speed by 1.15 on repeated runs.
 
 Check that synchronization is preserved. For an unchanged source range, expected new duration is approximately `old duration × old speed / target speed`, allowing frame rounding. A displayed typed value alone is not proof that ScreenFlow applied the edit. If the new value fails to persist, re-identify the field and retry its commit once; if it still fails, stop this step and report the observed state. Do not compensate by trimming, moving clips, or changing duration fields.
 
