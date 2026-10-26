@@ -37,6 +37,15 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
     1. 若上一条视频停留在「导出成功」弹窗（`ExportDialog`），先点击其关闭按钮 `automationcloseBtn`。
     2. **先关闭上一个项目窗口**：通过无障碍树找到编辑器主窗口 `AXStandardWindow` 的 `AXCloseButton` 执行 `AXPress`（或点击左上角红色关闭按钮 `(20, 51)`），剪映会自动保存当前草稿并直接退回剪映首页（无二次确认弹窗）。
     3. **在首页点击「开始创作」**：等待首页 `HomePageStartProjectDesp`（约 `(983, 306.5)`）出现后单击「开始创作」，进入全新空白草稿再继续导入下一条视频。
+- **核心原则 5（首页广告弹窗 / 模态拦截框优先清理与多屏幕归位法则）**：
+  - **避坑要点**：当剪映刚启动或关闭上一个项目退回首页（`AXStandardWindow`）时，常会弹出一个**模态广告/新功能推荐弹窗**（无障碍树中表现为顶层 `[AXWindow/AXDialog]`，尺寸通常为 `616x500`，内部包含 `AXButton title="automationmainBtn"`）。此时背后的首页「开始创作」（`HomePageStartProjectDesp`）节点虽然仍在无障碍树中可见，但**所有对「开始创作」的点击都会被前置广告弹窗拦截而全部失效**！
+  - **标准排查与清理动作（已在 `jianying_flow.py` 的 `dismiss_blocking_dialogs` 中内置）**：
+    1. **先查顶层 `AXDialog`**：在点击首页「开始创作」之前，必须先遍历 `AXWindows`，检查是否存在尺寸 `width >= 300, height >= 200` 的 `AXWindow/AXDialog`（注意忽略编辑器左侧常驻的 `42x42` 小悬浮窗）。
+    2. **优先点击关闭按钮**：
+       - 若弹窗内含 `automationcloseBtn` / `automationcancel`（如残留的 `ExportDialog`），直接点击其中心关闭；
+       - 若弹窗具备标准 `AXCloseButton` 属性（如误触打开的 `1440x812`「AI 文字成片」窗口），直接对其 `AXCloseButton` 执行 `AXPress` 或点击关闭；
+       - 若为首页 `616x500` 广告弹窗（通常在 AX 树中不暴露关闭按钮，仅暴露 `AXGroup` 与 `automationmainBtn`），先点击弹窗右上角关闭热区 `(wx + ww - 22, wy + 22)` 并发送 `Escape`；若仍未关闭，则点击 `automationmainBtn` 消掉广告模态框，并在 0.9s 后通过标准 `AXCloseButton` 立即关闭其唤起的子窗口，从而彻底回到干净的剪映首页。
+    3. **多屏幕窗口自动归位**：外接显示器（副屏坐标 `y < 0`）场景下，若检测到剪映首页或编辑器窗口的 `AXPosition.y < 0`，立即通过 `AXUIElementSetAttributeValue` 将窗口 `AXPosition` 移回主屏幕标准坐标（编辑器移至 `(0, 33)`，首页移至 `(280, 160)`），避免跨屏幕点击偏移或局部截图失效。
 - **分步调试 / 自定义微调指令**（底层由 [scripts/mac_cua.py](scripts/mac_cua.py) 与 [scripts/jianying_flow.py](scripts/jianying_flow.py) 提供，与 `cua_repl` 1:1 等价）：
   - **列出/激活应用**（对应 `cua.listApps()` 与连接应用）：
     - `python3 /Users/kqy/.gemini/config/skills/video_add_caption/scripts/mac_cua.py list-apps`
@@ -67,7 +76,10 @@ description: 通过电脑界面操作剪映专业版，导入本地视频、识�
 1. 尝试通过应用显示名称获取剪映专业版。
 2. 名称解析失败时，通过 `cua.listApps()`（Antigravity 下使用 `mac_cua.py list-apps` / `activate`）获取真实应用标识。
 3. 如果 bundle ID 对应多个辅助进程，改用已返回的主应用完整路径；本次环境验证过的路径是 `/Applications/VideoFusion-macOS.app`，bundle ID 是 `com.lemon.lvpro`。其他机器以实际发现结果为准。
-4. 查看当前窗口，建立独立草稿；若上一个项目仍打开，先关闭上一个项目窗口回到首页，点击「开始创作」进入新建空白草稿，不要无意修改用户正在编辑的其他项目。
+4. 查看当前窗口，建立独立草稿：
+   - 若上一个项目仍打开，先关闭上一个项目窗口回到首页；
+   - **进入首页后先检查并清理前置广告弹窗（如尺寸 `616x500` 的 `AXWindow/AXDialog`）**，避免广告弹窗遮挡导致点击「开始创作」全部失效；
+   - 确认无模态弹窗遮挡后，点击首页「开始创作」进入新建空白草稿，不要无意修改用户正在编辑的其他项目。
 5. **修改剪映项目名称（与导出文件名保持一致）**：进入新建草稿后，单击编辑器窗口顶部正中央的项目名称区域（如默认的 `10月25日 (6)`，坐标约 `(864, 51)`，单击后会自动全选），按 `Delete` 清空后输入 `<源文件名去扩展名>_字幕版` 并按 `Return` 确认保存。
 
 ## 2. 导入并加入时间线

@@ -56,7 +56,133 @@ def collect_ax_nodes(cua, elem, depth=0, max_depth=10, results=None):
     return results
 
 
+def ensure_windows_on_main_screen(cua):
+    pid = cua.get_jianying_pid()
+    if not pid:
+        return
+    cua.ax.AXValueCreate.argtypes = [cua.ctypes.c_uint32, cua.ctypes.c_void_p]
+    cua.ax.AXValueCreate.restype = cua.ctypes.c_void_p
+    cua.ax.AXUIElementSetAttributeValue.argtypes = [cua.ctypes.c_void_p, cua.ctypes.c_void_p, cua.ctypes.c_void_p]
+    cua.ax.AXUIElementSetAttributeValue.restype = cua.ctypes.c_int32
+    app_el = cua.ax.AXUIElementCreateApplication(pid)
+    wins = cua.ax_get_attr(app_el, "AXWindows")
+    moved = False
+    for i in range(cua.cf.CFArrayGetCount(wins) if wins else 0):
+        w = cua.cf.CFArrayGetValueAtIndex(wins, i)
+        pos = cua.ax_get_point(w)
+        size = cua.ax_get_size(w)
+        if pos and pos[1] < 0:
+            tx = 0.0 if (size and size[0] >= 1600) else 280.0
+            ty = 33.0 if (size and size[0] >= 1600) else 160.0
+            pt = cua.CGPoint(tx, ty)
+            val = cua.ax.AXValueCreate(1, cua.ctypes.byref(pt))
+            cua.ax.AXUIElementSetAttributeValue(w, cua.cfstr("AXPosition"), val)
+            moved = True
+    cua.cf.CFRelease(app_el)
+    if moved:
+        time.sleep(0.3)
+
+
+def dismiss_blocking_dialogs(cua, t_start=0.0):
+    """
+    Detect and close any modal AXDialog (w >= 300, h >= 200) blocking the Home Screen or Editor,
+    such as leftover ExportDialog, Home Screen promotional ad popups (616x500 with automationmainBtn),
+    or secondary feature windows (e.g., 1440x812 AI 文字成片 dialog).
+    """
+    ensure_windows_on_main_screen(cua)
+    pid = cua.get_jianying_pid()
+    if not pid:
+        return False
+
+    closed_any = False
+    for _ in range(4):
+        ensure_windows_on_main_screen(cua)
+        app_el = cua.ax.AXUIElementCreateApplication(pid)
+        wins = cua.ax_get_attr(app_el, "AXWindows")
+        cnt = cua.cf.CFArrayGetCount(wins) if wins else 0
+        blocking_dlg = None
+        dlg_pos = None
+        dlg_size = None
+        for i in range(cnt):
+            w = cua.cf.CFArrayGetValueAtIndex(wins, i)
+            subrole = cua.cf_to_py(cua.ax_get_attr(w, "AXSubrole"))
+            pos = cua.ax_get_point(w)
+            size = cua.ax_get_size(w)
+            if subrole == "AXDialog" and size and size[0] >= 300 and size[1] >= 200:
+                blocking_dlg = w
+                dlg_pos = pos
+                dlg_size = size
+                break
+
+        if not blocking_dlg:
+            cua.cf.CFRelease(app_el)
+            break
+
+        dlg_nodes = collect_ax_nodes(cua, blocking_dlg, max_depth=6)
+        close_btn = find_node(
+            dlg_nodes,
+            lambda n: n["title"] in ("automationcloseBtn", "automationcancel")
+            or n["desc"] in ("automationcloseBtn", "automationcancel"),
+        )
+        ax_close_el = cua.ax_get_attr(blocking_dlg, "AXCloseButton")
+
+        if close_btn:
+            print(f"[{time.time() - t_start:.1f}s] Closing blocking dialog via '{close_btn['title'] or close_btn['desc']}' at {close_btn['center']}")
+            cua.mouse_click(*close_btn["center"], focus_first=False)
+            closed_any = True
+            cua.cf.CFRelease(app_el)
+            time.sleep(0.7)
+            continue
+
+        if ax_close_el:
+            cb_pos = cua.ax_get_point(ax_close_el)
+            cb_size = cua.ax_get_size(ax_close_el)
+            print(f"[{time.time() - t_start:.1f}s] Closing blocking AXDialog ({dlg_size[0]}x{dlg_size[1]}) via AXCloseButton")
+            err = cua.ax.AXUIElementPerformAction(ax_close_el, cua.cfstr("AXPress"))
+            if err != 0 and cb_pos and cb_size:
+                cua.mouse_click(cb_pos[0] + cb_size[0] / 2.0, cb_pos[1] + cb_size[1] / 2.0, focus_first=False)
+            closed_any = True
+            cua.cf.CFRelease(app_el)
+            time.sleep(0.8)
+            continue
+
+        # Ad popup on Home Screen (e.g. 616x500 with automationmainBtn and no AXCloseButton exposed):
+        # 1) Try top-right 'X' icon of the dialog + Escape
+        wx, wy = dlg_pos
+        ww, wh = dlg_size
+        top_right_x = round(wx + ww - 22.0, 1)
+        top_right_y = round(wy + 22.0, 1)
+        print(f"[{time.time() - t_start:.1f}s] Dismissing Home Screen ad popup ({ww}x{wh}) via top-right close ({top_right_x}, {top_right_y})")
+        cua.mouse_click(top_right_x, top_right_y, focus_first=False)
+        time.sleep(0.25)
+        cua.send_key("escape", focus_first=False)
+        time.sleep(0.6)
+
+        # Check if the ad dialog is still present; if so, click automationmainBtn and close the resulting dialog on next iteration
+        main_btn = find_node(dlg_nodes, lambda n: n["title"] == "automationmainBtn" or n["desc"] == "automationmainBtn")
+        cua.cf.CFRelease(app_el)
+        app_el2 = cua.ax.AXUIElementCreateApplication(pid)
+        wins2 = cua.ax_get_attr(app_el2, "AXWindows")
+        still_there = False
+        for j in range(cua.cf.CFArrayGetCount(wins2) if wins2 else 0):
+            w2 = cua.cf.CFArrayGetValueAtIndex(wins2, j)
+            sz2 = cua.ax_get_size(w2)
+            if cua.cf_to_py(cua.ax_get_attr(w2, "AXSubrole")) == "AXDialog" and sz2 == dlg_size:
+                still_there = True
+                break
+        cua.cf.CFRelease(app_el2)
+
+        if still_there and main_btn:
+            print(f"[{time.time() - t_start:.1f}s] Ad popup ignored top-right click; clicking 'automationmainBtn' at {main_btn['center']} to clear modal and close child window")
+            cua.mouse_click(*main_btn["center"], focus_first=False)
+            time.sleep(0.9)
+        closed_any = True
+
+    return closed_any
+
+
 def get_app_nodes(cua, max_depth=8):
+    ensure_windows_on_main_screen(cua)
     pid = cua.get_jianying_pid()
     if not pid:
         return []
@@ -179,15 +305,9 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
         time.sleep(0.5)
         nodes = get_app_nodes(cua, max_depth=6)
 
-    # Close any leftover ExportDialog if present
-    exp_dlg = find_node(nodes, lambda n: n["desc"] == "ExportDialog")
-    if exp_dlg:
-        close_btn = find_node(nodes, lambda n: n["title"] in ("automationcloseBtn", "automationcancel"))
-        if close_btn:
-            print(f"[{time.time() - t_start:.1f}s] Closing previous ExportDialog at {close_btn['center']}")
-            cua.mouse_click(*close_btn["center"])
-            time.sleep(0.6)
-            nodes = get_app_nodes(cua, max_depth=6)
+    # Close any leftover ExportDialog, Home Screen promotional ad popups (616x500), or secondary AXDialogs
+    if dismiss_blocking_dialogs(cua, t_start):
+        nodes = get_app_nodes(cua, max_depth=6)
 
     timeline_root = find_node(nodes, lambda n: n["desc"] == "MainTimeLineRoot")
     home_new = find_node(nodes, lambda n: n["desc"] in ("HomePageStartProjectDesp", "HomePageNewProject"))
@@ -222,8 +342,10 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
 
     # Wait until editor window is ready
     if not target_video_track:
+        timeline_root = None
         for _ in range(30):
             time.sleep(0.5)
+            dismiss_blocking_dialogs(cua, t_start)
             nodes = get_app_nodes(cua, max_depth=6)
             home_new = find_node(nodes, lambda n: n["desc"] in ("HomePageStartProjectDesp", "HomePageNewProject"))
             if home_new:
@@ -275,36 +397,57 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
             cua.cf.CFDictionaryGetValue.argtypes = [cua.ctypes.c_void_p, cua.ctypes.c_void_p]
             cua.cf.CFDictionaryGetValue.restype = cua.ctypes.c_void_p
 
-            def get_jy_win_widths():
+            def get_jy_win_bounds():
                 pid = cua.get_jianying_pid()
                 arr = cua.cg.CGWindowListCopyWindowInfo(1, 0)
                 if not arr:
-                    return set()
+                    return {}
                 cnt = cua.cf.CFArrayGetCount(arr)
-                widths = set()
+                bounds_by_w = {}
                 for i in range(cnt):
                     d = cua.cf.CFArrayGetValueAtIndex(arr, i)
                     wpid = cua.cf_to_py(cua.cf.CFDictionaryGetValue(d, cua.cfstr("kCGWindowOwnerPID")))
                     if wpid == float(pid):
                         b = cua.cf.CFDictionaryGetValue(d, cua.cfstr("kCGWindowBounds"))
-                        w = int(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("Width"))) or 0)
-                        widths.add(w)
+                        wx = float(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("X"))) or 0.0)
+                        wy = float(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("Y"))) or 0.0)
+                        ww = int(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("Width"))) or 0)
+                        wh = float(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("Height"))) or 0.0)
+                        bounds_by_w[ww] = (wx, wy, float(ww), wh)
                 cua.cf.CFRelease(arr)
-                return widths
+                return bounds_by_w
 
-            win_widths = get_jy_win_widths()
-            if 880 not in win_widths:
+            win_bounds = get_jy_win_bounds()
+            if 880 not in win_bounds:
                 print(f"[{time.time() - t_start:.1f}s] Step 2/5: Clicking ImportMainButton at {import_btn['center']}")
                 cua.mouse_click(*import_btn["center"], focus_first=False)
-                time.sleep(1.5)
-                win_widths = get_jy_win_widths()
+                for _ in range(25):
+                    time.sleep(0.25)
+                    win_bounds = get_jy_win_bounds()
+                    if 880 in win_bounds:
+                        time.sleep(0.4)
+                        break
 
-            if 460 not in win_widths:
-                cua.send_key("cmd+shift+g", focus_first=False)
-                time.sleep(0.8)
+            win_bounds = get_jy_win_bounds()
+            if 460 not in win_bounds:
+                for attempt in range(2):
+                    cua.send_key("cmd+shift+g", focus_first=False)
+                    for _ in range(10):
+                        time.sleep(0.2)
+                        win_bounds = get_jy_win_bounds()
+                        if 460 in win_bounds:
+                            break
+                    if 460 in win_bounds:
+                        break
+                time.sleep(0.3)
 
-            # Click the X clear button in Go-To-Folder popover at (1071, 424) and type UTF-16 path directly
-            cua.mouse_click(1071.0, 424.0, focus_first=False)
+            # Click the X clear button in Go-To-Folder popover and type UTF-16 path directly
+            if 460 in win_bounds:
+                gx, gy, gw, _ = win_bounds[460]
+                clear_x, clear_y = round(gx + gw - 23.0, 1), round(gy + 22.0, 1)
+            else:
+                clear_x, clear_y = 1071.0, 424.0
+            cua.mouse_click(clear_x, clear_y, focus_first=False)
             time.sleep(0.25)
             cua.type_unicode(video_path, press_enter=False, focus_first=False)
             time.sleep(0.7)
