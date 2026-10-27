@@ -448,25 +448,36 @@ def ensure_windows_on_main_screen(pid: int = None):
         pid = get_screenflow_pid()
     if not pid:
         return
+    disp_w, disp_h = get_display_size()
     app_el = ax.AXUIElementCreateApplication(pid)
     wins = ax_get_attr(app_el, "AXWindows")
     moved = False
     for i in range(cf.CFArrayGetCount(wins) if wins else 0):
         w = cf.CFArrayGetValueAtIndex(wins, i)
+        subrole = ax_get_str(w, "AXSubrole")
         pos = ax_get_point(w)
-        if pos and pos[1] < 0:
-            pt = CGPoint(0.0, 33.0)
-            val = ax.AXValueCreate(kAXValueCGPointType, ctypes.byref(pt))
-            attr_cf = cfstr("AXPosition")
-            ax.AXUIElementSetAttributeValue(w, attr_cf, val)
-            cf.CFRelease(attr_cf)
-            cf.CFRelease(val)
-            moved = True
+        sz = ax_get_size(w)
+        if pos and (pos[1] < 0 or pos[0] < 0 or (sz and pos[0] + sz[0] > disp_w)):
+            if subrole == "AXStandardWindow" or (sz and sz[0] > 1000):
+                pt = CGPoint(0.0, 33.0)
+                val_pt = ax.AXValueCreate(kAXValueCGPointType, ctypes.byref(pt))
+                attr_pos = cfstr("AXPosition")
+                ax.AXUIElementSetAttributeValue(w, attr_pos, val_pt)
+                cf.CFRelease(attr_pos)
+                cf.CFRelease(val_pt)
+                if sz and (sz[0] > disp_w or sz[1] > disp_h - 33):
+                    new_sz = CGSize(float(disp_w), float(disp_h - 33))
+                    val_sz = ax.AXValueCreate(kAXValueCGSizeType, ctypes.byref(new_sz))
+                    attr_sz = cfstr("AXSize")
+                    ax.AXUIElementSetAttributeValue(w, attr_sz, val_sz)
+                    cf.CFRelease(attr_sz)
+                    cf.CFRelease(val_sz)
+                moved = True
     if wins:
         cf.CFRelease(wins)
     cf.CFRelease(app_el)
     if moved:
-        time.sleep(0.25)
+        time.sleep(0.3)
 
 
 def bring_to_front(force: bool = False):
@@ -760,15 +771,22 @@ def paste_text(text: str, select_all_first=True, press_enter=False, focus_first=
 
 def type_keys_in_field(x: float, y: float, text: str, press_enter: bool = True):
     """
-    Double-click a ScreenFlow numeric field at (x, y) and send individual keycodes
-    within the same process without triggering `bring_to_front()` or `cmd+a`
-    (which ScreenFlow intercepts as Edit -> Select All Clips).
+    Double-click a ScreenFlow numeric field at (x, y), clear existing content via
+    Right-Arrow + 8 Backspaces (to remove any '-', ',', or '%' that double-click word
+    selection leaves behind), and send individual keycodes within the same process
+    without triggering `bring_to_front()` or `cmd+a` (which ScreenFlow intercepts as
+    Edit -> Select All Clips).
     """
     mouse_click(x, y, count=2, focus_first=False)
-    time.sleep(0.15)
+    time.sleep(0.1)
+    send_key("right", focus_first=False)
+    time.sleep(0.04)
+    for _ in range(8):
+        send_key("delete", focus_first=False)
+        time.sleep(0.025)
     for ch in str(text):
         send_key(ch, focus_first=False)
-        time.sleep(0.06)
+        time.sleep(0.05)
     if press_enter:
         send_key("return", focus_first=False)
         time.sleep(0.25)
@@ -827,14 +845,54 @@ def close_clip_inspector(pid: int):
     cf.CFRelease(app)
 
 
-def run_polish_workflow(speed=115, width=3456, height=1944, volume=190, verify_shot=None):
+def set_clip_scale_and_pos(pid: int, target_scale: int = None, pos_x: int = None, pos_y: int = None):
+    """
+    In Video Properties Tab, locate Scale: and Position: text fields and update them.
+    """
+    app = ax.AXUIElementCreateApplication(pid)
+    vnodes = collect_ax_nodes(app)
+    cf.CFRelease(app)
+
+    if target_scale is not None:
+        scale_lbl = next((n for n in vnodes if n["role"] == "AXStaticText" and n["val"] == "Scale:"), None)
+        if scale_lbl and scale_lbl["center"]:
+            sy = scale_lbl["center"][1]
+            s_tf = next(
+                (n for n in vnodes if n["role"] == "AXTextField" and n["center"] and abs(n["center"][1] - sy) < 10 and n["center"][0] > 1600),
+                None
+            )
+            if s_tf and s_tf["val"].replace("%", "").strip() != str(target_scale):
+                type_keys_in_field(s_tf["center"][0], s_tf["center"][1], str(target_scale), press_enter=True)
+
+    if pos_x is not None or pos_y is not None:
+        pos_lbl = next((n for n in vnodes if n["role"] == "AXStaticText" and n["val"] == "Position:"), None)
+        if pos_lbl and pos_lbl["center"]:
+            py = pos_lbl["center"][1]
+            p_tfs = sorted(
+                [n for n in vnodes if n["role"] == "AXTextField" and n["center"] and abs(n["center"][1] - py) < 10 and n["center"][0] > 1500],
+                key=lambda x: x["center"][0]
+            )
+            if len(p_tfs) >= 2:
+                x_tf, y_tf = p_tfs[0], p_tfs[1]
+                if pos_x is not None and x_tf["val"].replace(",", "").strip() != str(pos_x):
+                    type_keys_in_field(x_tf["center"][0], x_tf["center"][1], str(pos_x), press_enter=True)
+                if pos_y is not None and y_tf["val"].replace(",", "").strip() != str(pos_y):
+                    type_keys_in_field(y_tf["center"][0], y_tf["center"][1], str(pos_y), press_enter=True)
+
+
+def run_polish_workflow(
+    speed=115, width=3456, height=1944, volume=190,
+    screen_y=64, cam_scale=60, cam_x=1200, cam_y=574,
+    verify_shot=None
+):
     """
     Single-process fast pipeline for Antigravity:
     1. Activate ScreenFlow & relocate off-screen windows to main display
     2. Identify timeline clips & apply target speed to each clip via Clip Inspector
-    3. Set Canvas Crop dimensions (width x height) and reopen to verify
+    3. Set Canvas Crop dimensions (width x height) and align Screen Recording PPT frame (0, 64)
     4. Deselect all, select ONLY camera clip, set Audio Volume to target %
-    5. Open Video Properties Tab, enable Automatic Background Removal -> Blur
+    5. Open Video Properties Tab, set Camera Scale to 60% & Top-Right Position (1200, 574),
+       and enable Automatic Background Removal -> Blur
     6. Read back all final parameters and optionally save a verification screenshot
     """
     pid = cmd_activate()
@@ -903,9 +961,9 @@ def run_polish_workflow(speed=115, width=3456, height=1944, volume=190, verify_s
     cf.CFRelease(app)
     canvas_label = next((n for n in crop_nodes if n["role"] == "AXStaticText" and n["val"] == "Canvas:"), None)
     if canvas_label and canvas_label["center"]:
-        cy = canvas_label["center"][1]
+        cx0, cy = canvas_label["center"][0], canvas_label["center"][1]
         tf_nodes = sorted(
-            [n for n in crop_nodes if n["role"] == "AXTextField" and n["center"] and abs(n["center"][1] - cy) < 15],
+            [n for n in crop_nodes if n["role"] == "AXTextField" and n["center"] and abs(n["center"][1] - cy) < 15 and cx0 < n["center"][0] < cx0 + 250],
             key=lambda x: x["center"][0]
         )
         if len(tf_nodes) >= 2:
@@ -914,15 +972,25 @@ def run_polish_workflow(speed=115, width=3456, height=1944, volume=190, verify_s
                 type_keys_in_field(w_field["center"][0], w_field["center"][1], str(width), press_enter=True)
             if h_field["val"].strip() != str(height):
                 type_keys_in_field(h_field["center"][0], h_field["center"][1], str(height), press_enter=True)
-            # Find rightmost commit button on the Canvas Crop bar
+            # Find rightmost green check commit button inside the Canvas Crop bar (within cx0..cx0+560)
             btns = sorted(
-                [n for n in crop_nodes if n["role"] == "AXButton" and n["center"] and abs(n["center"][1] - cy) < 15],
+                [n for n in crop_nodes if n["role"] == "AXButton" and n["center"] and abs(n["center"][1] - cy) < 15 and cx0 < n["center"][0] < cx0 + 560],
                 key=lambda x: x["center"][0]
             )
             if btns:
                 mouse_click(btns[-1]["center"][0], btns[-1]["center"][1], count=1, focus_first=False)
                 time.sleep(0.3)
-    print(f"[Step 3] Set Canvas dimensions to {width} x {height}")
+    print(f"[Step 3a] Set Canvas dimensions to {width} x {height}")
+
+    # Step 3b: Align Screen Recording PPT frame to fit 1944 Canvas height (Position: 0, 64)
+    mouse_click(500.0, 990.0, count=1, focus_first=False)
+    time.sleep(0.2)
+    mouse_click(500.0, screen_clip["center"][1], count=1, focus_first=False)
+    time.sleep(0.25)
+    cmd_ax_press("Video Properties Tab")
+    time.sleep(0.3)
+    set_clip_scale_and_pos(pid, target_scale=100, pos_x=0, pos_y=screen_y)
+    print(f"[Step 3b] Aligned Screen Recording PPT frame to Position=(0, {screen_y}), Scale=100%")
 
     # Step 4: Deselect all, select ONLY camera clip, set Audio Volume
     mouse_click(500.0, 990.0, count=1, focus_first=False)
@@ -943,9 +1011,11 @@ def run_polish_workflow(speed=115, width=3456, height=1944, volume=190, verify_s
         time.sleep(0.25)
     print(f"[Step 4] Set Camera Audio Volume to {volume}%")
 
-    # Step 5: Open Video Properties Tab & apply Automatic Background Removal -> Blur
+    # Step 5: Open Video Properties Tab, set Camera Scale=60% & Top-Right Position=(1200, 574), and apply Automatic Background Removal -> Blur
     cmd_ax_press("Video Properties Tab")
     time.sleep(0.3)
+    set_clip_scale_and_pos(pid, target_scale=cam_scale, pos_x=cam_x, pos_y=cam_y)
+    print(f"[Step 5a] Set Camera Overlay Scale={cam_scale}%, Top-Right Position=({cam_x}, {cam_y})")
     app = ax.AXUIElementCreateApplication(pid)
     vid_nodes = collect_ax_nodes(app)
     cf.CFRelease(app)

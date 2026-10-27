@@ -17,6 +17,8 @@ Resolve the project and target clips from the user's request and the current int
 | Screen and camera clips | The corresponding synchronized pair in that document |
 | Clip speed | 115% (1.15×), applied to both clips and their associated audio |
 | Canvas width × height | 3456 × 1944 pixels |
+| Screen recording scale & position | Scale: `100%`, Position: `X = 0, Y = 64` (exact full-bleed alignment for the 1944px PPT frame) |
+| Camera overlay scale & position | Scale: `60%`, Position: `X = 1200, Y = 574` (top-right corner of the `3456 × 1944` canvas) |
 | Camera clip audio volume | 190% |
 | Camera background mode | Automatic Background Removal → Background: Blur |
 | Blur amount | Preserve the existing/default amount unless specified |
@@ -46,6 +48,10 @@ Dispatch Computer Use operations based on the current AI Coding tool environment
   - When multiple clips are highlighted in yellow, single-clicking one clip (or clicking the main window while `Clip Inspector` is active) may keep both clips selected. Before Step 4 (Camera Audio Volume), close `Clip Inspector` via `AXPress` on its close button, **click an empty timeline area (e.g., `(500, 990)`) to deselect all**, and then click `FaceTime HD Camera` `(500, 854)`.
 - **Core Principle 5 (Filter by `AXMenuItem` when selecting `Blur` to avoid `Blur Size:` static text)**:
   - `Video Properties Tab` contains a static label `value="Blur Size:"` under Drop Shadow. `find_and_press_ax` skips `AXStaticText` and supports `role_filter="AXMenuItem"` so clicking the `Background:` popup (`Clear` → `Blur`) targets `[AXMenuItem] title="Blur"` directly.
+- **Core Principle 6 (Exact PPT Frame Alignment `(0, 64)` & Top-Right 60% Camera Placement `(1200, 574)` + Backspace Clearing)**:
+  - **PPT Frame Full-Bleed Fit**: On a 16-inch MacBook Pro (`3456 × 2232` recording), the top menu bar + PowerPoint title bar + top border occupy `208 px`, the 16:9 PPT slide occupies `1944 px`, and the bottom border occupies `80 px` (`208 + 1944 + 80 = 2232`). After cropping the canvas to `3456 × 1944` (which trims `144 px` top and bottom by default), setting the **Screen Recording** clip's `Position` to `X = 0, Y = 64` (`208 - 144 = 64`) at `Scale = 100%` aligns the `1944 px` PPT slide edge-to-edge with zero top/bottom bars.
+  - **Camera Overlay Top-Right at 60%**: The native `FaceTime HD Camera` clip is `1760 × 1328`. At `Scale = 60%`, its scaled size is `1056 × 796.8` (half-size `528 × 398.4`). In ScreenFlow's Cartesian canvas coordinates (`+X` right, `+Y` up; canvas top-right corner is `(+1728, +972)`), setting the camera clip's `Position` to `X = 1200, Y = 574` (`1728 - 528 = 1200`, `972 - 398.4 = 573.6 ≈ 574`) places the camera overlay flush in the top-right corner.
+  - **Clear Minus Signs & Commas via Right-Arrow + Backspaces**: macOS word double-click on `-652` or `1,122` only selects digits after `-` or `,`. `type_keys_in_field` sends `right` followed by 8 `delete` keystrokes after double-clicking so negative signs and thousands separators are completely cleared without using `cmd+a`.
 - **Step-by-step / Custom CLI Commands** (`scripts/mac_cua.py`, 1:1 equivalent to `mcp__cua_repl`):
   - **List / Activate ScreenFlow** (maps to `cua.listApps()` and app connection):
     - `python3 <skill_dir>/scripts/mac_cua.py list-apps`
@@ -96,21 +102,24 @@ Replace the **Speed** field with the requested absolute percentage and commit it
 
 Check that synchronization is preserved. For an unchanged source range, expected new duration is approximately `old duration × old speed / target speed`, allowing frame rounding. A displayed typed value alone is not proof that ScreenFlow applied the edit. If the new value fails to persist, re-identify the field and retry its commit once; if it still fails, stop this step and report the observed state. Do not compensate by trimming, moving clips, or changing duration fields.
 
-### 3. Set canvas dimensions
+### 3. Set canvas dimensions and align PPT screen recording frame
 
 Open `Canvas Crop`. Set width and height to the resolved dimensions; when width already matches, change height only. Commit and reopen the popover to verify both values. The demonstration changed height from 2232 to 1944 while leaving width at 3456.
 
-Inspect the resulting frame for the screen content and camera overlay. Canvas resizing may crop content; do not silently rescale or reposition clips to compensate. Report visibly cut-off intended content if it needs a separate composition decision.
+After setting the canvas height to `1944`, select **only the screen recording clip**, open `Video Properties Tab`, ensure **Scale** is `100%`, and set **Position** to `X = 0, Y = 64` so that the `3456 × 1944` PPT slide area fills the `3456 × 1944` canvas edge-to-edge without top menu bars or bottom borders.
 
 ### 4. Set camera audio volume
 
-Close the crop popover and select **only the camera clip**. Open `Audio Properties Tab`, set its **Volume** field to the requested percentage, commit, and read it back. Typing the numeric value is preferable to reproducing the demonstrated slider drag.
+Close the crop popover, deselect all clips by clicking an empty timeline area, and select **only the camera clip**. Open `Audio Properties Tab`, set its **Volume** field to the requested percentage, commit, and read it back. Typing the numeric value is preferable to reproducing the demonstrated slider drag.
 
 If the camera clip has no editable audio, identify whether the user intended a separate narration track before changing any other track. Leave ducking, normalization, noise removal, and effects at their existing settings. Verify the committed volume by reading the field back; audio audition is not part of this workflow.
 
-### 5. Apply automatic background blur
+### 5. Position camera overlay at top-right (60%) and apply automatic background blur
 
-Keep only the camera clip selected and open `Video Properties Tab`. Reuse an existing `Automatic Background Removal` filter when present. Otherwise choose `Add Video Filter`, select `Automatic` within the **Background Removal** category, and click `Add` or confirm the sheet.
+Keep only the camera clip selected and open `Video Properties Tab`:
+
+1. Set **Scale** to `60%` and **Position** to `X = 1200, Y = 574` (clearing any leading `-` sign on Y) to place the camera overlay flush in the top-right corner of the `3456 × 1944` canvas.
+2. Reuse an existing `Automatic Background Removal` filter when present. Otherwise choose `Add Video Filter`, select `Automatic` within the **Background Removal** category, and click `Add` or confirm the sheet.
 
 Ensure the filter is enabled, then set its **Background** popup to **Blur**. Re-read the popup after the menu closes. `Clear` removes the background; it is not the demonstrated final mode. Preserve the existing/default blur amount unless the user supplies one. Avoid stacking duplicate filters on repeated runs.
 
