@@ -8,9 +8,9 @@ payload:
   - DOMAIN-SUFFIX,coderunnerapp.com
 
   # === 专注模式 / 摸鱼站点屏蔽备选（按需取消注释） ===
-  # - DOMAIN-SUFFIX,sspai.com
-  # - DOMAIN-SUFFIX,chiphell.com
-  # - DOMAIN-SUFFIX,bilibili.com
-  # - DOMAIN-SUFFIX,mcdn.bilivideo.cn
-  # - DOMAIN,data.bilibili.com
-  # - DOMAIN,api.bilibili.com
+  - DOMAIN-SUFFIX,sspai.com
+  - DOMAIN-SUFFIX,chiphell.com
+  - DOMAIN-SUFFIX,bilibili.com
+  - DOMAIN-SUFFIX,mcdn.bilivideo.cn
+  - DOMAIN,data.bilibili.com
+  - DOMAIN,api.bilibili.com
