@@ -1,0 +1,16 @@
+# NAME: KqyReject
+# AUTHOR: kqy
+# REPO: https://github.com/kangqingyu/AI-Workflow-Protocols
+# BEHAVIOR: classical (仅写匹配类型与目标，策略统一由外层 RULE-SET,KqyReject,REJECT 指定)
+
+payload:
+  # === 软件联网屏蔽 ===
+  - DOMAIN-SUFFIX,coderunnerapp.com
+
+  # === 专注模式 / 摸鱼站点屏蔽备选（按需取消注释） ===
+  # - DOMAIN-SUFFIX,sspai.com
+  # - DOMAIN-SUFFIX,chiphell.com
+  # - DOMAIN-SUFFIX,bilibili.com
+  # - DOMAIN-SUFFIX,mcdn.bilivideo.cn
+  # - DOMAIN,data.bilibili.com
+  # - DOMAIN,api.bilibili.com

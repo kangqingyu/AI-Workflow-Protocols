@@ -1,0 +1,24 @@
+# NAME: KqyDirect
+# AUTHOR: kqy
+# REPO: https://github.com/kangqingyu/AI-Workflow-Protocols
+# BEHAVIOR: classical (仅写匹配类型与目标，策略统一由外层 RULE-SET,KqyDirect,DIRECT 指定)
+
+payload:
+  # === PT / 影视站点直连 ===
+  - DOMAIN-SUFFIX,pttime.org
+  - DOMAIN-SUFFIX,m-team.cc
+  - DOMAIN-SUFFIX,m-team.io
+  - DOMAIN-SUFFIX,m-team.co
+  - DOMAIN-SUFFIX,springsunday.net
+  - DOMAIN-SUFFIX,totheglory.im
+
+  # === 常用软件与工具直连 ===
+  - DOMAIN-SUFFIX,imacso.com
+  - DOMAIN-KEYWORD,imacso.com
+  - DOMAIN,file0.assrt.net
+  - DOMAIN,secure.assrt.net
+  - DOMAIN-SUFFIX,omnigroup.com
+  - DOMAIN-SUFFIX,notability.com
+
+  # === 剪映自动生成字幕 ===
+  - DOMAIN-SUFFIX,pc-mon.zijieapi.com
