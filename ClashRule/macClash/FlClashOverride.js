@@ -17,6 +17,14 @@ function main(config) {
       ? proxyGroups[0].name
       : "DIRECT";
 
+  // 查找是否存在「广告站点」策略组，若存在则将其默认首选项设为 REJECT，支持在 FlClash 面板随时切换 REJECT / DIRECT
+  const adGroup = proxyGroups.find((g) => g && g.name === "广告站点");
+  if (adGroup && Array.isArray(adGroup.proxies)) {
+    const rest = adGroup.proxies.filter((p) => p !== "REJECT");
+    adGroup.proxies = ["REJECT", ...rest];
+  }
+  const rejectTarget = adGroup ? "广告站点" : "REJECT";
+
   const baseRawUrl =
     "https://raw.githubusercontent.com/kangqingyu/AI-Workflow-Protocols/main/ClashRule/macClash";
 
@@ -44,7 +52,7 @@ function main(config) {
 
   // 2. 将自定义规则集置顶插入 rules（优先级最高）
   const customRules = [
-    "RULE-SET,KqyReject,REJECT",
+    `RULE-SET,KqyReject,${rejectTarget}`,
     "RULE-SET,KqyDirect,DIRECT",
   ];
 

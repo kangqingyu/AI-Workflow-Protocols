@@ -4,7 +4,11 @@
 # BEHAVIOR: classical (仅写匹配类型与目标，策略统一由外层 RULE-SET,KqyDirect,DIRECT 指定)
 
 payload:
+  # === PT / BT 客户端进程直连（含海外纯 IP Peer UDP/TCP 流量） ===
+  - PROCESS-NAME,Transmission
+
   # === PT / 影视站点直连 ===
+  - DOMAIN-SUFFIX,ikanpp.com
   - DOMAIN-SUFFIX,pttime.org
   - DOMAIN-SUFFIX,m-team.cc
   - DOMAIN-SUFFIX,m-team.io
