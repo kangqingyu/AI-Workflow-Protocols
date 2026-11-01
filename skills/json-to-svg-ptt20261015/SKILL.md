@@ -39,3 +39,7 @@ description: 根据 JSON 大纲生成 SVG 格式的 PPT 演示文稿。
 | 7 / 风格七 | 牛津学院与复古科学图谱风 / Oxford Collegiate & Monocle Infographics | [oxford-collegiate-atlas.md](styles/oxford-collegiate-atlas.md) |
 | 8 / 风格八 | 神经多巴胺博弈与数字健康极简风 / Neuro-Balance & Digital Minimalism Lab | [neuro-dopamine-lab.md](styles/neuro-dopamine-lab.md) |
 | 9 / 风格九 | 蔦屋书店森系呼吸感与现代策展书卷风 / Tsutaya & Kinfolk Mindful Reading Sanctuary | [tsutaya-kinfolk-sanctuary.md](styles/tsutaya-kinfolk-sanctuary.md) |
+| 10 / 风格十 | 瑞士精密制表 × OmniFocus/Things 3 现代效能工作台风 / Swiss Horology & Zen Productivity Cockpit | [swiss-horology-gtd-cockpit.md](styles/swiss-horology-gtd-cockpit.md) |
+| 11 / 风格十一 | HHKB 极客机械键帽 × macOS 效率启动器工作台风 / HHKB Tactile Keycap & macOS Power-User Workbench | [hhkb-macos-launcher-workbench.md](styles/hhkb-macos-launcher-workbench.md) |
+| 12 / 风格十二 | 医学 3.0 生命体征仪表盘 × 北欧自然疗愈风 / Medicine 3.0 Longevity Biometrics & Mindful Sanctuary | [medicine3-longevity-biometrics.md](styles/medicine3-longevity-biometrics.md) |
+| 13 / 风格十三 | Canyon × Rapha 破风车架几何工程蓝图 × 职业码表遥测风 / Canyon Aero Frame Geometry Blueprint & Rapha Peloton Telemetry | [canyon-aero-cycling-blueprint.md](styles/canyon-aero-cycling-blueprint.md) |
