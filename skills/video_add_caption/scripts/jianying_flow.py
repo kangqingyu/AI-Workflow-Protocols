@@ -481,6 +481,24 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
                 break
         if not video_track:
             raise RuntimeError("Video track (MTLSVideoP) did not appear on timeline after drag.")
+
+        # For long videos (>= 8 min), Jianying auto-zooms out so far that caption blocks (< 3px wide)
+        # are omitted from the AX tree (0 MTLSTextP nodes). Zoom in 4 ticks preemptively.
+        tot_prog = find_node(nodes, lambda n: n["desc"].startswith("totalProgress|"))
+        if tot_prog:
+            try:
+                t_parts = tot_prog["desc"].split("|", 1)[1].split(":")
+                total_mins = int(t_parts[0]) * 60 + int(t_parts[1])
+                if total_mins >= 8:
+                    zoom_in_btn = find_node(nodes, lambda n: n["desc"] == "zoomIn")
+                    zx, zy = zoom_in_btn["center"] if zoom_in_btn else (1667.0, 651.0)
+                    print(f"[{time.time() - t_start:.1f}s] Long video ({total_mins} min) detected; zooming in timeline 4 steps at ({zx}, {zy})")
+                    for _ in range(4):
+                        cua.mouse_click(zx, zy, focus_first=False)
+                        time.sleep(0.12)
+                    nodes = get_app_nodes(cua, max_depth=7)
+            except Exception:
+                pass
     print(f"[{time.time() - t_start:.1f}s] Step 2/5 complete ({time.time() - t0:.1f}s): Video on timeline ({video_track['desc']}).")
 
     # --- STEP 3: Auto Caption Recognition (智能识别字幕) ---
@@ -608,18 +626,62 @@ def run_auto_caption(cua, video_path: str, verify_dir: str = None, overwrite: bo
             folder_btn = find_node(nodes, lambda n: "ExportFileNameInputBtn" in (n["title"] + n["desc"]))
             if folder_btn:
                 print(f"[{time.time() - t_start:.1f}s] Updating export directory from {cur_dir} to {video_dir}")
+                cua.cg.CGWindowListCopyWindowInfo.argtypes = [cua.ctypes.c_uint32, cua.ctypes.c_uint32]
+                cua.cg.CGWindowListCopyWindowInfo.restype = cua.ctypes.c_void_p
+                cua.cf.CFDictionaryGetValue.argtypes = [cua.ctypes.c_void_p, cua.ctypes.c_void_p]
+                cua.cf.CFDictionaryGetValue.restype = cua.ctypes.c_void_p
+
+                def _get_exp_win_bounds():
+                    pid_now = cua.get_jianying_pid()
+                    arr = cua.cg.CGWindowListCopyWindowInfo(1, 0)
+                    if not arr:
+                        return {}
+                    res = {}
+                    for idx in range(cua.cf.CFArrayGetCount(arr)):
+                        d = cua.cf.CFArrayGetValueAtIndex(arr, idx)
+                        wpid = cua.cf_to_py(cua.cf.CFDictionaryGetValue(d, cua.cfstr("kCGWindowOwnerPID")))
+                        if wpid == float(pid_now):
+                            b = cua.cf.CFDictionaryGetValue(d, cua.cfstr("kCGWindowBounds"))
+                            wx = float(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("X"))) or 0.0)
+                            wy = float(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("Y"))) or 0.0)
+                            ww = int(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("Width"))) or 0)
+                            wh = float(cua.cf_to_py(cua.cf.CFDictionaryGetValue(b, cua.cfstr("Height"))) or 0.0)
+                            res[ww] = (wx, wy, float(ww), wh)
+                    cua.cf.CFRelease(arr)
+                    return res
+
                 cua.mouse_click(*folder_btn["center"], focus_first=False)
-                time.sleep(1.4)
-                cua.send_key("cmd+shift+g", focus_first=False)
-                time.sleep(0.8)
-                cua.mouse_click(1071.0, 424.0, focus_first=False)
-                time.sleep(0.25)
-                cua.type_unicode(video_dir, press_enter=False, focus_first=False)
-                time.sleep(0.7)
-                cua.send_key("return", focus_first=False)
-                time.sleep(0.8)
-                cua.send_key("return", focus_first=False)
-                time.sleep(0.6)
+                exp_wb = {}
+                for _ in range(25):
+                    time.sleep(0.25)
+                    exp_wb = _get_exp_win_bounds()
+                    if 880 in exp_wb:
+                        time.sleep(0.4)
+                        break
+
+                if 880 in exp_wb:
+                    for _ in range(2):
+                        cua.send_key("cmd+shift+g", focus_first=False)
+                        for _ in range(12):
+                            time.sleep(0.2)
+                            exp_wb = _get_exp_win_bounds()
+                            if 460 in exp_wb:
+                                break
+                        if 460 in exp_wb:
+                            break
+                    time.sleep(0.3)
+                    if 460 in exp_wb:
+                        gx, gy, gw, _ = exp_wb[460]
+                        clear_x, clear_y = round(gx + gw - 23.0, 1), round(gy + 22.0, 1)
+                        cua.mouse_click(clear_x, clear_y, focus_first=False)
+                        time.sleep(0.25)
+                        cua.type_unicode(video_dir, press_enter=False, focus_first=False)
+                        time.sleep(0.7)
+                        cua.send_key("return", focus_first=False)
+                        time.sleep(0.9)
+                    if 880 in _get_exp_win_bounds():
+                        cua.send_key("return", focus_first=False)
+                        time.sleep(0.6)
                 nodes = get_app_nodes(cua, max_depth=6)
                 fname_input = find_node(nodes, lambda n: n["desc"] == "ExportFileNameInput")
                 ok_btn = find_node(nodes, lambda n: n["title"] == "ExportOkBtn" or n["desc"] == "ExportOkBtn")

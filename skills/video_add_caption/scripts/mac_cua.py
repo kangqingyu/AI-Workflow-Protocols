@@ -483,19 +483,23 @@ def cmd_list_apps():
 def cmd_activate():
     pid = get_jianying_pid()
     if not pid:
-        launch_jianying_via_dock_or_objc()
+        subprocess.run(['open', '-a', JIANYING_APP_PATH], check=False)
         for _ in range(25):
             time.sleep(0.5)
             pid = get_jianying_pid()
             if pid:
                 break
     if not pid:
-        subprocess.run(['open', '-a', JIANYING_APP_PATH], check=False)
-        for _ in range(15):
-            time.sleep(0.5)
-            pid = get_jianying_pid()
-            if pid:
-                break
+        dock_pid = get_pid_by_bundle_id("com.apple.dock")
+        if dock_pid:
+            dock_elem = ax.AXUIElementCreateApplication(dock_pid)
+            find_and_press_ax(dock_elem, "剪映专业版", max_depth=5) or find_and_press_ax(dock_elem, "VideoFusion", max_depth=5)
+            cf.CFRelease(dock_elem)
+            for _ in range(20):
+                time.sleep(0.5)
+                pid = get_jianying_pid()
+                if pid:
+                    break
     if not pid:
         print("ERROR: Failed to find or launch Jianying Pro.")
         sys.exit(1)
